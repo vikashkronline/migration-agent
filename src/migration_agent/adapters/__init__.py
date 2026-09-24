@@ -8,15 +8,23 @@ from migration_agent.adapters.frameworks import AngularAdapter, EmberClassicAdap
 from migration_agent.adapters.gemini import GeminiRuntimeAdapter
 from migration_agent.adapters.governance import GitGovernanceAdapter
 from migration_agent.adapters.reporting import AnalysisReportWriter, InventoryReportWriter
+from migration_agent.adapters.transforms import (
+    AngularStandaloneComponentRenderer,
+    EmberClassicComponentExtractor,
+)
+from migration_agent.adapters.workspace import LocalWorkspaceAdapter
 
 __all__ = [
     "AnalysisReportWriter",
     "AngularAdapter",
+    "AngularStandaloneComponentRenderer",
     "EmberClassicAdapter",
+    "EmberClassicComponentExtractor",
     "FakeAgentRuntime",
     "GeminiRuntimeAdapter",
     "GitGovernanceAdapter",
     "InventoryReportWriter",
+    "LocalWorkspaceAdapter",
     "OpenAIAgentsRuntimeAdapter",
     "SafeFilesystemInspector",
     "SqliteCheckpointStore",

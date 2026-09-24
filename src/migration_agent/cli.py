@@ -3,6 +3,7 @@
 import json
 import os
 import sys
+import uuid
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Annotated
@@ -12,11 +13,14 @@ import typer
 from migration_agent.adapters import (
     AnalysisReportWriter,
     AngularAdapter,
+    AngularStandaloneComponentRenderer,
     EmberClassicAdapter,
+    EmberClassicComponentExtractor,
     FakeAgentRuntime,
     GeminiRuntimeAdapter,
     GitGovernanceAdapter,
     InventoryReportWriter,
+    LocalWorkspaceAdapter,
     OpenAIAgentsRuntimeAdapter,
     SafeFilesystemInspector,
     SqliteCheckpointStore,
@@ -26,13 +30,18 @@ from migration_agent.application import (
     InventoryService,
     PlanningService,
     RuleBasedPlanValidator,
+    TransformationService,
 )
 from migration_agent.config import Settings
 from migration_agent.domain import (
     AnalysisResult,
+    ApplyStatus,
     AssuranceLevel,
+    ChangeSet,
+    PlanStatus,
     ProjectInventory,
     compute_plan_digest,
+    verify_approval,
 )
 from migration_agent.ports import AgentRuntimePort, FrameworkAdapterRegistry, InspectionPolicy
 
@@ -812,6 +821,411 @@ def plan_reject_command(
             err=True,
         )
         raise typer.Exit(code=2) from err
+
+
+def _create_transformation_service(
+    checkpoint_store: SqliteCheckpointStore,
+) -> TransformationService:
+    return TransformationService(
+        workspace_adapter=LocalWorkspaceAdapter(),
+        extractor=EmberClassicComponentExtractor(),
+        renderer=AngularStandaloneComponentRenderer(),
+        checkpoint_store=checkpoint_store,
+        audit_logger=checkpoint_store,
+    )
+
+
+@app.command("preview")
+def preview_command(
+    path: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            help="Source repository path to inspect.",
+        ),
+    ],
+    plan_id: Annotated[
+        str,
+        typer.Option(
+            "--plan",
+            "-p",
+            help="Migration plan ID to preview changes for.",
+        ),
+    ],
+    step_id: Annotated[
+        str | None,
+        typer.Option(
+            "--step",
+            "-s",
+            help="Optional specific step ID within the plan.",
+        ),
+    ] = None,
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "--output",
+            "-o",
+            file_okay=False,
+            help="Optional directory to write changeset.json and preview.diff.",
+        ),
+    ] = None,
+    project_root: Annotated[
+        Path | None,
+        typer.Option(
+            "--project-root",
+            "-r",
+            help="Target repository root containing .agent/ governance assets.",
+        ),
+    ] = None,
+    state_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--state-dir",
+            help="Custom directory for SQLite checkpoints and audit log.",
+        ),
+    ] = None,
+) -> None:
+    """Generate proposed ChangeSet and unified diff without modifying source or staging."""
+    settings = Settings()
+    effective_state_dir = settings.resolve_state_dir(state_dir)
+    checkpoint_store = SqliteCheckpointStore(effective_state_dir)
+    governance = GitGovernanceAdapter()
+
+    plan = checkpoint_store.get_plan(plan_id)
+    if plan is None and project_root is not None:
+        plan = governance.load_plan(str(project_root), plan_id)
+    if plan is None:
+        plan = governance.load_plan(str(path), plan_id)
+
+    if plan is None:
+        typer.echo(
+            json.dumps(
+                {"error": f"Plan '{plan_id}' not found.", "status": "error"},
+                separators=(",", ":"),
+            ),
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    service = _create_transformation_service(checkpoint_store)
+
+    try:
+        changeset, diff_text = service.preview(path, plan, step_id=step_id)
+    except Exception as err:
+        typer.echo(
+            json.dumps({"error": str(err), "status": "error"}, separators=(",", ":")),
+            err=True,
+        )
+        raise typer.Exit(code=2) from err
+
+    result_data: dict[str, object] = {
+        "changeset_digest": changeset.changeset_digest,
+        "changeset_id": changeset.changeset_id,
+        "file_count": len(changeset.changes),
+        "plan_id": plan.plan_id,
+        "status": "ok",
+        "worktree_fingerprint": changeset.worktree_fingerprint,
+    }
+
+    if output is not None:
+        output.mkdir(parents=True, exist_ok=True)
+        changeset_file = output / "changeset.json"
+        diff_file = output / "preview.diff"
+        changeset_file.write_text(changeset.model_dump_json(indent=2), encoding="utf-8")
+        diff_file.write_text(diff_text, encoding="utf-8")
+        result_data["changeset_path"] = str(changeset_file)
+        result_data["diff_path"] = str(diff_file)
+
+    typer.echo(json.dumps(result_data, separators=(",", ":"), sort_keys=True))
+
+
+@app.command("stage")
+def stage_command(
+    path: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            help="Source repository path to stage from.",
+        ),
+    ],
+    plan_id: Annotated[
+        str,
+        typer.Option(
+            "--plan",
+            "-p",
+            help="Approved migration plan ID to stage.",
+        ),
+    ],
+    step_id: Annotated[
+        str | None,
+        typer.Option(
+            "--step",
+            "-s",
+            help="Optional specific step ID within the plan.",
+        ),
+    ] = None,
+    staging_root: Annotated[
+        Path | None,
+        typer.Option(
+            "--staging-root",
+            file_okay=False,
+            help="Custom root directory to create isolated staging workspace.",
+        ),
+    ] = None,
+    project_root: Annotated[
+        Path | None,
+        typer.Option(
+            "--project-root",
+            "-r",
+            help="Target repository root containing .agent/ governance assets.",
+        ),
+    ] = None,
+    state_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--state-dir",
+            help="Custom directory for SQLite checkpoints and audit log.",
+        ),
+    ] = None,
+) -> None:
+    """Materialize proposed ChangeSet in an isolated staging workspace after verifying approval."""
+    settings = Settings()
+    effective_state_dir = settings.resolve_state_dir(state_dir)
+    effective_staging_root = settings.resolve_staging_root(staging_root)
+    checkpoint_store = SqliteCheckpointStore(effective_state_dir)
+    governance = GitGovernanceAdapter()
+
+    plan = checkpoint_store.get_plan(plan_id)
+    if plan is None and project_root is not None:
+        plan = governance.load_plan(str(project_root), plan_id)
+    if plan is None:
+        plan = governance.load_plan(str(path), plan_id)
+
+    if plan is None:
+        typer.echo(
+            json.dumps(
+                {"error": f"Plan '{plan_id}' not found.", "status": "error"},
+                separators=(",", ":"),
+            ),
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    if plan.status != PlanStatus.APPROVED or not verify_approval(plan):
+        typer.echo(
+            json.dumps(
+                {
+                    "error": (
+                        f"Cannot stage unapproved or modified plan '{plan_id}' "
+                        f"(status: {plan.status.value})."
+                    ),
+                    "status": "error",
+                },
+                separators=(",", ":"),
+            ),
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    service = _create_transformation_service(checkpoint_store)
+
+    run_id = f"stage-{uuid.uuid4().hex[:8]}"
+    try:
+        staging_dir, changeset = service.stage(
+            staging_root=effective_staging_root,
+            run_id=run_id,
+            source_root=path,
+            plan=plan,
+            step_id=step_id,
+        )
+    except Exception as err:
+        typer.echo(
+            json.dumps({"error": str(err), "status": "error"}, separators=(",", ":")),
+            err=True,
+        )
+        raise typer.Exit(code=2) from err
+
+    typer.echo(
+        json.dumps(
+            {
+                "changeset_digest": changeset.changeset_digest,
+                "changeset_id": changeset.changeset_id,
+                "file_count": len(changeset.changes),
+                "plan_id": plan.plan_id,
+                "staging_path": str(staging_dir),
+                "status": "ok",
+            },
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+    )
+
+
+@app.command("apply")
+def apply_command(
+    path: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            help="Target repository path to apply changes to.",
+        ),
+    ],
+    plan_id: Annotated[
+        str,
+        typer.Option(
+            "--plan",
+            "-p",
+            help="Approved migration plan ID.",
+        ),
+    ],
+    changeset_id: Annotated[
+        str | None,
+        typer.Option(
+            "--changeset",
+            "-c",
+            help="Optional specific changeset ID to apply.",
+        ),
+    ] = None,
+    actor: Annotated[
+        str,
+        typer.Option(
+            "--actor",
+            "-a",
+            help="Actor executing the controlled apply.",
+        ),
+    ] = "operator",
+    backup_root: Annotated[
+        Path | None,
+        typer.Option(
+            "--backup-root",
+            file_okay=False,
+            help="Optional custom root directory for pre-apply file backups.",
+        ),
+    ] = None,
+    project_root: Annotated[
+        Path | None,
+        typer.Option(
+            "--project-root",
+            "-r",
+            help="Target repository root containing .agent/ governance assets.",
+        ),
+    ] = None,
+    state_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--state-dir",
+            help="Custom directory for SQLite checkpoints and audit log.",
+        ),
+    ] = None,
+) -> None:
+    """Execute ADR-8 4-step controlled apply protocol with verified rollback."""
+    settings = Settings()
+    effective_state_dir = settings.resolve_state_dir(state_dir)
+    checkpoint_store = SqliteCheckpointStore(effective_state_dir)
+    governance = GitGovernanceAdapter()
+
+    plan = checkpoint_store.get_plan(plan_id)
+    if plan is None and project_root is not None:
+        plan = governance.load_plan(str(project_root), plan_id)
+    if plan is None:
+        plan = governance.load_plan(str(path), plan_id)
+
+    if plan is None:
+        typer.echo(
+            json.dumps(
+                {"error": f"Plan '{plan_id}' not found.", "status": "error"},
+                separators=(",", ":"),
+            ),
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    if plan.status != PlanStatus.APPROVED or not verify_approval(plan):
+        typer.echo(
+            json.dumps(
+                {
+                    "error": (
+                        f"Cannot apply unapproved or modified plan '{plan_id}' "
+                        f"(status: {plan.status.value})."
+                    ),
+                    "status": "error",
+                },
+                separators=(",", ":"),
+            ),
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    service = _create_transformation_service(checkpoint_store)
+
+    changeset: ChangeSet | None = None
+    if changeset_id is not None:
+        changeset = checkpoint_store.get_changeset(changeset_id)
+        if changeset is None:
+            cs_path = Path(changeset_id)
+            if cs_path.is_file():
+                try:
+                    changeset = ChangeSet.model_validate_json(cs_path.read_text(encoding="utf-8"))
+                except Exception as read_err:
+                    typer.echo(
+                        json.dumps(
+                            {
+                                "error": f"Failed reading ChangeSet file: {read_err}",
+                                "status": "error",
+                            },
+                            separators=(",", ":"),
+                        ),
+                        err=True,
+                    )
+                    raise typer.Exit(code=2) from read_err
+
+        if changeset is None:
+            typer.echo(
+                json.dumps(
+                    {"error": f"ChangeSet '{changeset_id}' not found.", "status": "error"},
+                    separators=(",", ":"),
+                ),
+                err=True,
+            )
+            raise typer.Exit(code=2)
+    else:
+        changeset, _ = service.preview(path, plan)
+
+    result = service.apply(
+        source_root=path,
+        changeset=changeset,
+        plan=plan,
+        actor=actor,
+        backup_root=backup_root,
+    )
+
+    output_payload: dict[str, object] = {
+        "applied_paths": list(result.applied_paths),
+        "backup_snapshot_path": result.backup_snapshot_path,
+        "changeset_id": result.changeset_id,
+        "diagnostics": list(result.diagnostics),
+        "status": result.status.value,
+    }
+    if result.recovery_details:
+        output_payload["recovery_details"] = result.recovery_details
+
+    if result.status == ApplyStatus.APPLIED:
+        typer.echo(json.dumps(output_payload, separators=(",", ":"), sort_keys=True))
+    else:
+        typer.echo(
+            json.dumps(output_payload, separators=(",", ":"), sort_keys=True),
+            err=True,
+        )
+        raise typer.Exit(code=2)
 
 
 if __name__ == "__main__":

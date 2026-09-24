@@ -41,6 +41,12 @@ class Settings(BaseSettings):
         description="Maximum number of expected files allowed in a single migration step.",
     )
 
+    staging_root: Path | None = Field(
+        default=None,
+        validation_alias="AGENT_STAGING_ROOT",
+        description="Root directory for isolated staging workspaces.",
+    )
+
     @property
     def effective_model(self) -> str | None:
         """Return the effective model from either canonical or legacy configuration."""
@@ -53,3 +59,11 @@ class Settings(BaseSettings):
         if self.state_dir is not None:
             return self.state_dir
         return Path.home() / ".agent-platform" / "state"
+
+    def resolve_staging_root(self, override: Path | None = None) -> Path:
+        """Resolve effective staging root for isolated workspaces."""
+        if override is not None:
+            return override
+        if self.staging_root is not None:
+            return self.staging_root
+        return Path.home() / ".agent-platform" / "staging"

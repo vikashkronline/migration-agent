@@ -19,6 +19,12 @@ from migration_agent.ports.governance import (
     ProjectManifest,
     ProjectPolicy,
 )
+from migration_agent.ports.transformation import (
+    ComponentExtractorPort,
+    ComponentRendererPort,
+    IntermediateComponent,
+)
+from migration_agent.ports.workspace import WorkspacePort
 
 __all__ = [
     "AgentRuntimePort",
@@ -26,14 +32,18 @@ __all__ = [
     "AuditEvent",
     "AuditLogPort",
     "CheckpointPort",
+    "ComponentExtractorPort",
+    "ComponentRendererPort",
     "FileReaderPort",
     "FilesystemInspectorPort",
     "FrameworkAdapter",
     "FrameworkAdapterRegistry",
     "GovernancePort",
     "InspectionPolicy",
+    "IntermediateComponent",
     "OperationalCheckpoint",
     "PlanningRequest",
     "ProjectManifest",
     "ProjectPolicy",
+    "WorkspacePort",
 ]

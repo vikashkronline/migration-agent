@@ -41,13 +41,19 @@ cryptographic binding.
 | Unauthenticated / unauthorized approval (Mode C) | Mode C (unauthenticated / inspection) is strictly forbidden from approving migration plans in both CLI and domain logic. |
 | Database SQL injection | `SqliteCheckpointStore` exclusively uses parameterized queries and prepared statements for all database operations. |
 | Path traversal via `.agent/` exports | `GitGovernanceAdapter` validates that `.agent/` and `.agent/plans/` paths are strictly contained within the resolved project root. |
+| Staging path escape / traversal | `LocalWorkspaceAdapter` strictly validates that staging directories reside within resolved `staging_root`. |
+| Staging overlap with source repo | `LocalWorkspaceAdapter` rejects staging workspaces that are identical to or nested inside the source repository. |
+| Symlink escape during staging copy | Filesystem walker skips symlinks pointing outside the source tree during staging workspace creation. |
+| Unapproved or tampered apply | `TransformationService.apply` re-validates plan approval and cryptographic digest before modifying any file. |
+| Target repository drift attack | Deterministic SHA-256 worktree fingerprinting verifies identical base state before applying; any drift enters `BaseChanged` and aborts. |
+| Partial apply failure | ADR-8 backup snapshots capture prior file contents before mutation; apply failure triggers verified rollback (`RolledBack`). |
+| Corrupted / unverified rollback | Double fault explicitly transitions to `RecoveryRequired`, halting automated operations and recording detailed diagnostic context for operator intervention. |
 
 ## Residual risks and deferred controls
 
-- The source tree is not snapshotted, so another process can change ordinary files during
-  inspection. Later isolated workspace support (Phase 4) operates on worktrees and staging copies.
+- Subprocess execution and validation commands (Phase 5) are not yet allowlisted or executed in staging.
 - File classification and secret-name rules are intentionally conservative but cannot
   recognize every organization-specific secret convention.
 - Mode A (cryptographically verified SSH/GPG keys) currently records identity fingerprints;
   integration with native ssh-agent/gpg binaries is expanded in later phases.
-- Phase 3 does not yet execute code transformation or validation test runners (deferred to Phases 4 & 5).
+- Bounded repair loops and validation test runners are deferred to Phase 5.

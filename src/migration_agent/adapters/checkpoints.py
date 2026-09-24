@@ -4,7 +4,12 @@ import json
 import sqlite3
 from pathlib import Path
 
-from migration_agent.domain import ApprovalSignature, MigrationPlan, compute_plan_digest
+from migration_agent.domain import (
+    ApprovalSignature,
+    ChangeSet,
+    MigrationPlan,
+    compute_plan_digest,
+)
 from migration_agent.ports import AuditEvent, CheckpointPort, OperationalCheckpoint
 
 
@@ -69,6 +74,14 @@ class SqliteCheckpointStore(CheckpointPort):
                     actor TEXT NOT NULL,
                     timestamp TEXT NOT NULL,
                     payload_json TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS changesets (
+                    changeset_id TEXT PRIMARY KEY,
+                    plan_id TEXT NOT NULL,
+                    step_id TEXT NOT NULL,
+                    changeset_digest TEXT NOT NULL,
+                    content_json TEXT NOT NULL
                 );
                 """
             )
@@ -224,3 +237,36 @@ class SqliteCheckpointStore(CheckpointPort):
         )
         with open(self.audit_log_path, "a", encoding="utf-8") as f:
             f.write(line + "\n")
+
+    def save_changeset(self, changeset: ChangeSet) -> None:
+        """Persist a ChangeSet in the operational SQLite database."""
+        content_json = changeset.model_dump_json()
+
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO changesets (
+                    changeset_id, plan_id, step_id, changeset_digest, content_json
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    changeset.changeset_id,
+                    changeset.plan_id,
+                    changeset.step_id,
+                    changeset.changeset_digest,
+                    content_json,
+                ),
+            )
+
+    def get_changeset(self, changeset_id: str) -> ChangeSet | None:
+        """Retrieve a ChangeSet by its unique ID."""
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT content_json FROM changesets WHERE changeset_id = ?",
+                (changeset_id,),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                return None
+            return ChangeSet.model_validate_json(row["content_json"])

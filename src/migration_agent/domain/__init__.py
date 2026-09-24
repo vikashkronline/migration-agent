@@ -12,6 +12,17 @@ from migration_agent.domain.canonical import (
     canonical_json_dumps,
     compute_canonical_digest,
 )
+from migration_agent.domain.changeset import (
+    ApplyResult,
+    ApplyStatus,
+    ChangeSet,
+    FileChange,
+    FileMode,
+    FileOperation,
+    compute_changeset_digest,
+    compute_file_sha256,
+    compute_worktree_fingerprint,
+)
 from migration_agent.domain.inventory import (
     Dependency,
     DependencyScope,
@@ -42,14 +53,20 @@ from migration_agent.domain.planning import (
 __all__ = [
     "AnalysisFinding",
     "AnalysisResult",
+    "ApplyResult",
+    "ApplyStatus",
     "ApprovalSignature",
     "AssuranceLevel",
+    "ChangeSet",
     "Dependency",
     "DependencyScope",
     "EvidenceReference",
     "EvidenceStatus",
     "ExclusionSummary",
     "FileCategory",
+    "FileChange",
+    "FileMode",
+    "FileOperation",
     "FindingCategory",
     "FindingSeverity",
     "FrameworkEvidence",
@@ -68,6 +85,9 @@ __all__ = [
     "StepRisk",
     "canonical_json_dumps",
     "compute_canonical_digest",
+    "compute_changeset_digest",
+    "compute_file_sha256",
     "compute_plan_digest",
+    "compute_worktree_fingerprint",
     "verify_approval",
 ]

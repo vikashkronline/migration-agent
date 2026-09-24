@@ -144,7 +144,49 @@ durable Git governance files (`.agent/manifest.json`, `.agent/policy.json`, `.ag
 recorded canonical SQLite operational run state and checkpoints, appended to `audit.jsonl`, and validated
 that any plan mutation immediately invalidates approval signatures.
 
+## Phase 4 — Complete
+
+Scope: isolated staging transformations, intermediate component representation, presentational
+Ember Classic extraction to modern Angular Standalone rendering conforming to Angular 17+ standards,
+typed `ChangeSet` model with POSIX path normalization, file modes (0644/0755), per-file SHA-256 byte
+digests and RFC 8785 canonical metadata digest, working tree fingerprinting for drift detection,
+isolated staging workspace management with symlink defenses and path confinement (`WorkspacePort`
+and `LocalWorkspaceAdapter`), ADR-8 4-step controlled apply protocol with verified rollback and
+operator-intervention `RecoveryRequired` double-fault state, and CLI commands `agent preview`,
+`agent stage`, and `agent apply`.
+
+Completed on 2026-09-25 using `uv` and an isolated CPython 3.12.14 environment. The dependency
+lock resolved 69 packages. The required evidence is:
+
+```text
+uv sync --all-groups
+Resolved 69 packages; checked 68 packages.
+
+uv run pytest
+108 passed, 2 skipped in 8.01s
+
+uv run ruff check .
+All checks passed!
+
+uv run ruff format --check .
+83 files already formatted.
+
+uv run mypy src
+Success: no issues found in 36 source files.
+
+uv run migration-agent doctor
+Exit code 0; emitted schema-versioned JSON with status "ok" checking google-genai, openai-agents, pydantic, pydantic-settings, typer.
+```
+
+A transformation smoke run against the checked-in Ember Classic fixture (`user-card.js` and `user-card.hbs`)
+produced four generated Angular Standalone artifacts (`user-card.component.ts` with `standalone: true`,
+`OnPush`, signals, and typed inputs/state; `user-card.component.html` with modern `@if` control flow and
+Bootstrap 5 utility classes; `user-card.component.scss` with component scoping; and `user-card.component.spec.ts`
+with `TestBed` component testing). Transformations pass preflight verification and generate backup diff
+snapshots. Any drift in the target repository aborts apply with `BaseChanged`. Controlled apply failure triggers
+verified rollback, and rollback failure cleanly transitions to `RecoveryRequired`.
+
 ## Later phases
 
-Phases 4 through 10 have not started. No code transformation, AST modification, staging workspace
-mutation, or validation runner execution exists.
+Phases 5 through 10 have not started. No validation runner execution, allowlisted subprocess test runner,
+bounded repair loop, or remote trace export exists.

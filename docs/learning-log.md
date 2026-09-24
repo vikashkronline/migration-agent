@@ -92,3 +92,39 @@ reside in `.agent/` (manifest, safety policy, exported plans), operational run s
 reside in a local SQLite database (`checkpoints.db`), and human/tool auditability is preserved via
 an append-only JSONL mirror (`audit.jsonl`). Neither domain nor application services know about SQLite
 or filesystem details, accessing storage solely through `CheckpointPort`, `AuditLogPort`, and `GovernancePort`.
+
+## Phase 4 — Staging Workspace Confinement & ADR-8 Controlled Apply
+
+### Staging Workspace Confinement & Symlink Defense
+
+Staging directory creation must strictly enforce path confinement under the user-data staging root
+(`resolve_staging_root`), prevent overlapping source and staging directories, and refuse to follow
+or copy symlinks pointing outside the source tree. This guarantees that model transformations or workspace
+operations cannot tamper with external directories or leak sensitive paths.
+
+### ChangeSet Generation & Dual Hashing
+
+ChangeSets represent discrete, typed mutation proposals (`CREATE`, `MODIFY`, `DELETE`) with normalized
+POSIX paths and explicit file modes (`0644`/`0755`). Raw file bytes are hashed using raw SHA-256 for
+bit-for-bit integrity validation, while metadata structures are canonically digested via RFC 8785 JSON
+serialization so that list reordering does not affect the root digest.
+
+### Base-State Binding & Drift Invalidation (`BaseChanged`)
+
+Before applying mutations to the source tree, a deterministic worktree fingerprint (`compute_worktree_fingerprint`)
+verifies that every regular file in the target repository matches the exact state when the ChangeSet was
+generated. Any untracked addition, modification, or deletion immediately invalidates the operation and
+transitions the protocol to `BASE_CHANGED`, aborting the apply before disk writes begin.
+
+### ADR-8 4-Step Controlled Apply Protocol
+
+1. Approval re-verification & Base-state drift check
+2. Preflight dry-run path containment check
+3. Backup snapshot generation under separate backup root
+4. Controlled patch application with explicit actor attribution and file mode preservation
+5. Postcondition validation checks (presence, mode, content SHA-256)
+6. Verified rollback on failure: on any write or postcondition failure, the prior state is restored from
+   backup snapshots and verified; if verified, cleanly transitions to `ROLLED_BACK`.
+7. Double-fault containment (`RecoveryRequired`): if rollback itself fails or leaves uncertain state,
+   the system transitions to `RECOVERY_REQUIRED`, halts execution, and records exact diagnostic context
+   for human operator intervention.

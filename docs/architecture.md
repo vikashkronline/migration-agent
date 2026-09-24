@@ -93,3 +93,28 @@ Phase 3 introduces typed migration planning and the ADR-1 storage foundation:
 
 Source and staging repositories remain completely read-only throughout planning. No code transformations
 occur until subsequent phases. Implementations and tests remain fully portable across Windows and Linux.
+
+## Staging Workspace & Controlled Apply Protocol (ADR-8)
+
+Phase 4 introduces isolated workspace staging and the ADR-8 controlled apply protocol:
+
+1. **Workspace Boundary (`WorkspacePort`)**:
+   - Manages isolated staging workspaces under user-data staging roots.
+   - Enforces strict path containment and prevents overlapping paths between source and staging directories.
+   - Disallows or skips symlinks resolving outside the repository root.
+2. **Intermediate Component Representation**:
+   - `IntermediateComponent` provides a framework-neutral structural model (name, tag name, inputs, reactive state properties, methods, templates, styles).
+   - Source adapter `EmberClassicComponentExtractor` extracts presentational props, actions, and state.
+   - Target adapter `AngularStandaloneComponentRenderer` renders modern Angular 17+ components conforming to strict project standards (`standalone: true`, `ChangeDetectionStrategy.OnPush`, signals, `@if` control flow, Bootstrap 5 utilities).
+3. **ChangeSet & Dual Hashing**:
+   - `ChangeSet` represents proposed file mutations (`CREATE`, `MODIFY`, `DELETE`) with POSIX paths and file modes (`0644`/`0755`).
+   - File content is hashed with raw SHA-256 (`content_digest`).
+   - ChangeSet metadata is digested canonically via RFC 8785 JSON formatting (`changeset_digest`), invariant to list permutation.
+4. **ADR-8 4-Step Controlled Apply Protocol**:
+   - **Base-State Binding & Drift Check**: Evaluates deterministic SHA-256 worktree fingerprint across all tracked files. If the target repository has drifted, enters `BaseChanged` and aborts apply before disk writes begin.
+   - **Preflight Check**: Verifies repository path containment for all planned mutations.
+   - **Backup Diff Snapshots**: Captures raw byte copies of all targeted files under `.agent-backups/<changeset_id>/`.
+   - **Controlled Apply**: Applies patch mutations with explicit actor attribution and file mode preservation.
+   - **Postcondition Validation**: Validates file presence, deletion, file modes, and SHA-256 content digests.
+   - **Verified Rollback**: On any apply error, restores original files from backup snapshots and verifies restored state; transitions to `RolledBack`.
+   - **Double-Fault State (`RecoveryRequired`)**: If rollback itself fails or leaves uncertain state, immediately halts and enters `RecoveryRequired`, preserving detailed diagnostic context for manual operator intervention.
