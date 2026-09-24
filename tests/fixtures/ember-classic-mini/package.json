@@ -1,0 +1,12 @@
+{
+  "name": "ember-classic-mini",
+  "private": true,
+  "dependencies": {
+    "ember-source": "~3.28.12"
+  },
+  "devDependencies": {
+    "ember-cli": "~3.28.5",
+    "qunit": "^2.24.1"
+  }
+}
+

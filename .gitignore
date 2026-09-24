@@ -1,0 +1,12 @@
+.env
+.venv/
+.migration-agent/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
