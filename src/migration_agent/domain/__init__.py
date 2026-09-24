@@ -49,6 +49,15 @@ from migration_agent.domain.planning import (
     compute_plan_digest,
     verify_approval,
 )
+from migration_agent.domain.validation import (
+    MigrationRunReport,
+    RepairAttempt,
+    RunStatus,
+    ValidationCommand,
+    ValidationProfile,
+    ValidationResult,
+    ValidationStatus,
+)
 
 __all__ = [
     "AnalysisFinding",
@@ -76,13 +85,20 @@ __all__ = [
     "InventoryIssue",
     "MigrationPlan",
     "MigrationRequest",
+    "MigrationRunReport",
     "MigrationStep",
     "PackageBoundary",
     "PlanStatus",
     "ProjectInventory",
+    "RepairAttempt",
     "RepositoryDescriptor",
     "RepositorySnapshot",
+    "RunStatus",
     "StepRisk",
+    "ValidationCommand",
+    "ValidationProfile",
+    "ValidationResult",
+    "ValidationStatus",
     "canonical_json_dumps",
     "compute_canonical_digest",
     "compute_changeset_digest",

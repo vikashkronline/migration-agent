@@ -128,3 +128,37 @@ transitions the protocol to `BASE_CHANGED`, aborting the apply before disk write
 7. Double-fault containment (`RecoveryRequired`): if rollback itself fails or leaves uncertain state,
    the system transitions to `RECOVERY_REQUIRED`, halts execution, and records exact diagnostic context
    for human operator intervention.
+
+## Phase 5 — Allowlisted Validation & Bounded Repair Loop
+
+### Subprocess Confinement & Sanitization
+
+Executing model-suggested validation commands requires strict confinement. Executables are restricted
+to a static allowlist (`git`, `node`, `npm`, `npx`, `ng`, `tsc`, `pytest`, `python`, `uv`). Subprocess
+invocations strictly use `shell=False` and reject any shell metacharacters (`;`, `&&`, `|`, `` ` ``, `$`, `\n`)
+in command arguments. The subprocess environment is stripped of all API keys, credentials, and tokens
+matching sensitive substrings (`KEY`, `SECRET`, `TOKEN`, `PASSWORD`, `AUTH`, `OPENAI`, `GEMINI`),
+and bounded timeouts and output truncation (64KB cap with full output SHA-256 digest) prevent resource
+exhaustion or terminal lockups.
+
+### Bounded Self-Repair Loop (Invariant 26)
+
+Automated self-repair must never loop indefinitely or expand beyond human-approved authorization.
+The repair loop enforces:
+1. Strict attempt budget (default 3 attempts).
+2. Each repair cites a specific validation diagnostic.
+3. Repairs produce a NEW `ChangeSet` with a fresh `changeset_id` and fresh canonical RFC 8785 `changeset_digest`;
+   in-place mutation of prior changesets is prohibited.
+4. Scope containment: Any repair attempting to modify files outside the approved step scope is immediately
+   halted with status `DISALLOWED`, aborting the loop.
+5. Repeated failure termination: If consecutive validation attempts fail with identical diagnostics and output
+   digest, the loop immediately terminates as `FAILED` rather than burning the remaining budget without progress.
+
+### Reproducible Migration Run Reporting
+
+The terminal outcome of every migration execution is captured in a comprehensive `MigrationRunReport`
+recording source root, staging root, plan ID, validation results across all profiles (`LINT`, `TYPECHECK`,
+`TEST`, `BUILD`), repair attempt history, and terminal status (`SUCCESS`, `FAILED`, `ABORTED`). The report is
+canonically stored in SQLite (`run_reports`), mirrored to JSON and Markdown, and recorded to the append-only
+audit log (`audit.jsonl`).
+

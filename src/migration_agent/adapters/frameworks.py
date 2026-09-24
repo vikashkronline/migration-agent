@@ -11,6 +11,8 @@ from migration_agent.domain import (
     FrameworkFingerprint,
     InspectedTextFile,
     RepositorySnapshot,
+    ValidationCommand,
+    ValidationProfile,
 )
 
 _ANGULAR_STANDALONE_PATTERN = re.compile(r"\bstandalone\s*:\s*true\b")
@@ -133,6 +135,18 @@ class EmberClassicAdapter:
 
         return _fingerprint(self.framework_id, evidence)
 
+    def get_validation_commands(self, profile: ValidationProfile) -> tuple[ValidationCommand, ...]:
+        """Return allowlisted validation commands for Ember Classic."""
+        if profile == ValidationProfile.TEST:
+            return (
+                ValidationCommand(
+                    executable="npm",
+                    args=("test",),
+                    profile=ValidationProfile.TEST,
+                ),
+            )
+        return ()
+
 
 class AngularAdapter:
     """Detect evidence consistent with an Angular project."""
@@ -193,3 +207,39 @@ class AngularAdapter:
             )
 
         return _fingerprint(self.framework_id, evidence)
+
+    def get_validation_commands(self, profile: ValidationProfile) -> tuple[ValidationCommand, ...]:
+        """Return allowlisted validation commands for Angular."""
+        if profile == ValidationProfile.LINT:
+            return (
+                ValidationCommand(
+                    executable="npm",
+                    args=("run", "lint"),
+                    profile=ValidationProfile.LINT,
+                ),
+            )
+        if profile == ValidationProfile.TYPECHECK:
+            return (
+                ValidationCommand(
+                    executable="npx",
+                    args=("tsc", "--noEmit"),
+                    profile=ValidationProfile.TYPECHECK,
+                ),
+            )
+        if profile == ValidationProfile.TEST:
+            return (
+                ValidationCommand(
+                    executable="npm",
+                    args=("test", "--", "--watch=false", "--browsers=ChromeHeadless"),
+                    profile=ValidationProfile.TEST,
+                ),
+            )
+        if profile == ValidationProfile.BUILD:
+            return (
+                ValidationCommand(
+                    executable="npx",
+                    args=("ng", "build"),
+                    profile=ValidationProfile.BUILD,
+                ),
+            )
+        return ()

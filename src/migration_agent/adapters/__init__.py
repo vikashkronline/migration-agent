@@ -2,6 +2,7 @@
 
 from migration_agent.adapters.agents import OpenAIAgentsRuntimeAdapter
 from migration_agent.adapters.checkpoints import SqliteCheckpointStore
+from migration_agent.adapters.command_runner import FakeCommandRunner, SubprocessCommandRunner
 from migration_agent.adapters.fake_runtime import FakeAgentRuntime
 from migration_agent.adapters.filesystem import SafeFilesystemInspector
 from migration_agent.adapters.frameworks import AngularAdapter, EmberClassicAdapter
@@ -21,6 +22,7 @@ __all__ = [
     "EmberClassicAdapter",
     "EmberClassicComponentExtractor",
     "FakeAgentRuntime",
+    "FakeCommandRunner",
     "GeminiRuntimeAdapter",
     "GitGovernanceAdapter",
     "InventoryReportWriter",
@@ -28,4 +30,5 @@ __all__ = [
     "OpenAIAgentsRuntimeAdapter",
     "SafeFilesystemInspector",
     "SqliteCheckpointStore",
+    "SubprocessCommandRunner",
 ]

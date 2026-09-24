@@ -2,7 +2,12 @@
 
 from typing import Protocol
 
-from migration_agent.domain import FrameworkFingerprint, RepositorySnapshot
+from migration_agent.domain import (
+    FrameworkFingerprint,
+    RepositorySnapshot,
+    ValidationCommand,
+    ValidationProfile,
+)
 
 
 class FrameworkAdapter(Protocol):
@@ -14,6 +19,9 @@ class FrameworkAdapter(Protocol):
 
     def detect(self, snapshot: RepositorySnapshot) -> FrameworkFingerprint | None:
         """Return a fingerprint when repository evidence clears the adapter threshold."""
+
+    def get_validation_commands(self, profile: ValidationProfile) -> tuple[ValidationCommand, ...]:
+        """Return allowlisted validation commands owned by this framework for the given profile."""
 
 
 class FrameworkAdapterRegistry:
@@ -32,3 +40,12 @@ class FrameworkAdapterRegistry:
             if (fingerprint := adapter.detect(snapshot)) is not None
         ]
         return tuple(sorted(detected, key=lambda item: item.framework_id))
+
+    def get_validation_commands(
+        self, framework_id: str, profile: ValidationProfile
+    ) -> tuple[ValidationCommand, ...]:
+        """Retrieve allowlisted validation commands for a specific framework and profile."""
+        for adapter in self._adapters:
+            if adapter.framework_id == framework_id:
+                return adapter.get_validation_commands(profile)
+        return ()

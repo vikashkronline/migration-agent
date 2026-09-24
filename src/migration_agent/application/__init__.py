@@ -4,14 +4,22 @@ from migration_agent.application.analysis import AnalysisService, SnapshotFileRe
 from migration_agent.application.inventory import InventoryService
 from migration_agent.application.planning import PlanningService
 from migration_agent.application.transformation import TransformationService
+from migration_agent.application.validation import (
+    BoundedRepairService,
+    ReportService,
+    ValidationService,
+)
 from migration_agent.application.validator import PlanValidationResult, RuleBasedPlanValidator
 
 __all__ = [
     "AnalysisService",
+    "BoundedRepairService",
     "InventoryService",
     "PlanValidationResult",
     "PlanningService",
+    "ReportService",
     "RuleBasedPlanValidator",
     "SnapshotFileReader",
     "TransformationService",
+    "ValidationService",
 ]

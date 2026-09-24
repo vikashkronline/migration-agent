@@ -186,7 +186,47 @@ with `TestBed` component testing). Transformations pass preflight verification a
 snapshots. Any drift in the target repository aborts apply with `BaseChanged`. Controlled apply failure triggers
 verified rollback, and rollback failure cleanly transitions to `RecoveryRequired`.
 
+## Phase 5 — Complete
+
+Scope: allowlisted validation profiles owned by target framework adapters (`LINT`, `TYPECHECK`, `TEST`, `BUILD`),
+subprocess confinement via `CommandRunnerPort` (`SubprocessCommandRunner` & `FakeCommandRunner`) with strictly allowlisted
+executables (`git`, `node`, `npm`, `npx`, `ng`, `tsc`, `pytest`, `python`, `uv`), `shell=False`, environment sanitization
+dropping all sensitive API keys/credentials, bounded timeouts and output truncation (64KB cap with full output SHA-256 digest),
+bounded self-repair loop under Invariant 26 (max budget of 3 attempts, citing validation diagnostics, generating fresh
+`ChangeSet`s with fresh RFC 8785 digests, terminating on repeated identical failure or exhausted budget, aborting with
+`DISALLOWED` on unapproved scope expansion), comprehensive `MigrationRunReport` domain entity with SQLite persistence
+and Markdown generation, and CLI commands `agent validate` and `agent run`.
+
+Completed on 2026-09-25 using `uv` and an isolated CPython 3.12.14 environment. The dependency lock resolved 69 packages.
+The required evidence is:
+
+```text
+uv sync --all-groups
+Resolved 69 packages; checked 68 packages.
+
+uv run pytest
+138 passed, 2 skipped in 15.31s
+
+uv run ruff check .
+All checks passed!
+
+uv run ruff format --check .
+97 files already formatted.
+
+uv run mypy src
+Success: no issues found in 40 source files.
+
+uv run migration-agent doctor
+Exit code 0; emitted schema-versioned JSON with status "ok" checking google-genai, openai-agents, pydantic, pydantic-settings, typer.
+```
+
+A validation smoke run against the checked-in Ember Classic fixture (`fixtures/ember-classic-mini`) executed end-to-end:
+staged the approved plan, ran all 4 validation checks (`LINT`, `TYPECHECK`, `TEST`, `BUILD`), produced an immutable
+`MigrationRunReport` stored canonically in SQLite `run_reports` and mirrored to `run_report_<run_id>.json` and `.md`,
+leaving the original repository fixture completely untouched.
+
 ## Later phases
 
-Phases 5 through 10 have not started. No validation runner execution, allowlisted subprocess test runner,
-bounded repair loop, or remote trace export exists.
+Phases 6 through 10 have not started. No resumable checkpoints across process restarts, audit journal replay,
+or remote trace export exists.
+

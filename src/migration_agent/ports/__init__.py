@@ -12,6 +12,7 @@ from migration_agent.ports.checkpoints import (
     CheckpointPort,
     OperationalCheckpoint,
 )
+from migration_agent.ports.command_runner import CommandRunnerPort
 from migration_agent.ports.filesystem import FilesystemInspectorPort, InspectionPolicy
 from migration_agent.ports.frameworks import FrameworkAdapter, FrameworkAdapterRegistry
 from migration_agent.ports.governance import (
@@ -32,6 +33,7 @@ __all__ = [
     "AuditEvent",
     "AuditLogPort",
     "CheckpointPort",
+    "CommandRunnerPort",
     "ComponentExtractorPort",
     "ComponentRendererPort",
     "FileReaderPort",

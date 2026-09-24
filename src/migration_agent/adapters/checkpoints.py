@@ -8,6 +8,7 @@ from migration_agent.domain import (
     ApprovalSignature,
     ChangeSet,
     MigrationPlan,
+    MigrationRunReport,
     compute_plan_digest,
 )
 from migration_agent.ports import AuditEvent, CheckpointPort, OperationalCheckpoint
@@ -82,6 +83,14 @@ class SqliteCheckpointStore(CheckpointPort):
                     step_id TEXT NOT NULL,
                     changeset_digest TEXT NOT NULL,
                     content_json TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS run_reports (
+                    run_id TEXT PRIMARY KEY,
+                    plan_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    content_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
                 );
                 """
             )
@@ -270,3 +279,35 @@ class SqliteCheckpointStore(CheckpointPort):
             if row is None:
                 return None
             return ChangeSet.model_validate_json(row["content_json"])
+
+    def save_run_report(self, report: MigrationRunReport) -> None:
+        """Persist a migration run report in the operational SQLite database."""
+        content_json = report.model_dump_json()
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO run_reports (
+                    run_id, plan_id, status, content_json, created_at
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    report.run_id,
+                    report.plan_id,
+                    report.status.value,
+                    content_json,
+                    report.timestamp.isoformat(),
+                ),
+            )
+
+    def get_run_report(self, run_id: str) -> MigrationRunReport | None:
+        """Retrieve a migration run report by its unique run ID."""
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT content_json FROM run_reports WHERE run_id = ?",
+                (run_id,),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                return None
+            return MigrationRunReport.model_validate_json(row["content_json"])

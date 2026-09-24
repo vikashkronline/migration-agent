@@ -17,6 +17,7 @@ from migration_agent.adapters import (
     EmberClassicAdapter,
     EmberClassicComponentExtractor,
     FakeAgentRuntime,
+    FakeCommandRunner,
     GeminiRuntimeAdapter,
     GitGovernanceAdapter,
     InventoryReportWriter,
@@ -24,13 +25,17 @@ from migration_agent.adapters import (
     OpenAIAgentsRuntimeAdapter,
     SafeFilesystemInspector,
     SqliteCheckpointStore,
+    SubprocessCommandRunner,
 )
 from migration_agent.application import (
     AnalysisService,
+    BoundedRepairService,
     InventoryService,
     PlanningService,
+    ReportService,
     RuleBasedPlanValidator,
     TransformationService,
+    ValidationService,
 )
 from migration_agent.config import Settings
 from migration_agent.domain import (
@@ -40,10 +45,20 @@ from migration_agent.domain import (
     ChangeSet,
     PlanStatus,
     ProjectInventory,
+    RepairAttempt,
+    RunStatus,
+    ValidationCommand,
+    ValidationProfile,
+    ValidationStatus,
     compute_plan_digest,
     verify_approval,
 )
-from migration_agent.ports import AgentRuntimePort, FrameworkAdapterRegistry, InspectionPolicy
+from migration_agent.ports import (
+    AgentRuntimePort,
+    CommandRunnerPort,
+    FrameworkAdapterRegistry,
+    InspectionPolicy,
+)
 
 app = typer.Typer(
     help="Controlled, evidence-based code migration tooling.",
@@ -1225,6 +1240,379 @@ def apply_command(
             json.dumps(output_payload, separators=(",", ":"), sort_keys=True),
             err=True,
         )
+        raise typer.Exit(code=2)
+
+
+@app.command("validate")
+def validate_command(
+    path: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            help="Target repository or staging workspace path.",
+        ),
+    ],
+    plan_id: Annotated[
+        str | None,
+        typer.Option(
+            "--plan",
+            "-p",
+            help="Associated migration plan ID.",
+        ),
+    ] = None,
+    staging_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--staging-dir",
+            file_okay=False,
+            dir_okay=True,
+            help="Explicit staging workspace path to validate.",
+        ),
+    ] = None,
+    profile: Annotated[
+        str,
+        typer.Option(
+            "--profile",
+            help="Validation profile (LINT, TYPECHECK, TEST, BUILD, ALL).",
+        ),
+    ] = "ALL",
+    fake_runner: Annotated[
+        bool,
+        typer.Option(
+            "--fake-runner",
+            help="Use deterministic FakeCommandRunner for offline verification.",
+        ),
+    ] = False,
+    fail_validation: Annotated[
+        bool,
+        typer.Option(
+            "--fail-validation",
+            help="Simulate validation failure when using fake runner.",
+        ),
+    ] = False,
+    state_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--state-dir",
+            help="Custom directory for SQLite checkpoints and audit log.",
+        ),
+    ] = None,
+) -> None:
+    """Run allowlisted validation checks against a staging workspace."""
+    settings = Settings()
+    effective_state_dir = settings.resolve_state_dir(state_dir)
+    checkpoint_store = SqliteCheckpointStore(effective_state_dir)
+
+    target_dir = staging_dir or path
+    if not target_dir.exists():
+        typer.echo(
+            json.dumps({"error": f"Directory '{target_dir}' does not exist.", "status": "error"}),
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    profiles: list[ValidationProfile] = []
+    norm_profile = profile.upper()
+    if norm_profile == "ALL":
+        profiles = [
+            ValidationProfile.LINT,
+            ValidationProfile.TYPECHECK,
+            ValidationProfile.TEST,
+            ValidationProfile.BUILD,
+        ]
+    else:
+        try:
+            profiles = [ValidationProfile(norm_profile)]
+        except ValueError:
+            msg = f"Invalid profile '{profile}'. Allowed: LINT, TYPECHECK, TEST, BUILD, ALL."
+            typer.echo(
+                json.dumps({"error": msg, "status": "error"}, separators=(",", ":")),
+                err=True,
+            )
+            raise typer.Exit(code=2) from None
+
+    angular_adapter = AngularAdapter()
+    commands: list[ValidationCommand] = []
+    for p in profiles:
+        commands.extend(angular_adapter.get_validation_commands(p))
+
+    runner: CommandRunnerPort
+    if fake_runner:
+        runner = FakeCommandRunner(
+            default_status=ValidationStatus.FAILED if fail_validation else ValidationStatus.PASSED,
+            default_exit_code=1 if fail_validation else 0,
+            default_output=(
+                "Simulated failure diagnostic: syntax error in component"
+                if fail_validation
+                else "All checks passed."
+            ),
+            diagnostics=("syntax error in component",) if fail_validation else (),
+        )
+    else:
+        runner = SubprocessCommandRunner()
+
+    service = ValidationService(command_runner=runner, audit_logger=checkpoint_store)
+    run_id = f"val-{uuid.uuid4().hex[:8]}"
+    results = service.validate(target_dir, commands, run_id=run_id)
+
+    all_passed = all(r.status == ValidationStatus.PASSED for r in results)
+    payload = {
+        "plan_id": plan_id,
+        "run_id": run_id,
+        "status": "ok" if all_passed else "failed",
+        "target_dir": str(target_dir),
+        "validation_results": [
+            {
+                "command": r.command,
+                "diagnostics": list(r.diagnostics),
+                "duration_ms": r.duration_ms,
+                "exit_code": r.exit_code,
+                "output_digest": r.output_digest,
+                "profile": r.profile.value,
+                "status": r.status.value,
+            }
+            for r in results
+        ],
+    }
+
+    if all_passed:
+        typer.echo(json.dumps(payload, separators=(",", ":"), sort_keys=True))
+    else:
+        typer.echo(json.dumps(payload, separators=(",", ":"), sort_keys=True), err=True)
+        raise typer.Exit(code=2)
+
+
+@app.command("run")
+def run_command(
+    path: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            help="Target repository path to run migration against.",
+        ),
+    ],
+    plan_id: Annotated[
+        str,
+        typer.Option(
+            "--plan",
+            "-p",
+            help="Approved migration plan ID to execute and validate.",
+        ),
+    ],
+    auto_repair: Annotated[
+        bool,
+        typer.Option(
+            "--auto-repair",
+            help="Enable bounded self-repair loop on validation failure.",
+        ),
+    ] = False,
+    max_repairs: Annotated[
+        int,
+        typer.Option(
+            "--max-repairs",
+            help="Maximum repair attempts budget.",
+        ),
+    ] = 3,
+    output_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--output",
+            "-o",
+            file_okay=False,
+            help="Directory to save run reports.",
+        ),
+    ] = None,
+    actor: Annotated[
+        str,
+        typer.Option(
+            "--actor",
+            "-a",
+            help="Actor executing the migration run.",
+        ),
+    ] = "operator",
+    fake_runner: Annotated[
+        bool,
+        typer.Option(
+            "--fake-runner",
+            help="Use deterministic FakeCommandRunner for offline verification.",
+        ),
+    ] = False,
+    fail_validation: Annotated[
+        bool,
+        typer.Option(
+            "--fail-validation",
+            help="Simulate validation failure in fake runner.",
+        ),
+    ] = False,
+    project_root: Annotated[
+        Path | None,
+        typer.Option(
+            "--project-root",
+            "-r",
+            help="Target repository root containing .agent/ governance assets.",
+        ),
+    ] = None,
+    staging_root: Annotated[
+        Path | None,
+        typer.Option(
+            "--staging-root",
+            help="Custom root directory for staging workspaces.",
+        ),
+    ] = None,
+    state_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--state-dir",
+            help="Custom directory for SQLite checkpoints and audit log.",
+        ),
+    ] = None,
+) -> None:
+    """Execute end-to-end migration run: stage, validate, bounded repair, and report."""
+    settings = Settings()
+    effective_state_dir = settings.resolve_state_dir(state_dir)
+    effective_staging_root = settings.resolve_staging_root(staging_root)
+    checkpoint_store = SqliteCheckpointStore(effective_state_dir)
+    governance = GitGovernanceAdapter()
+
+    plan = checkpoint_store.get_plan(plan_id)
+    if plan is None and project_root is not None:
+        plan = governance.load_plan(str(project_root), plan_id)
+    if plan is None:
+        plan = governance.load_plan(str(path), plan_id)
+
+    if plan is None:
+        typer.echo(
+            json.dumps(
+                {"error": f"Plan '{plan_id}' not found.", "status": "error"},
+                separators=(",", ":"),
+            ),
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    if plan.status != PlanStatus.APPROVED or not verify_approval(plan):
+        err_msg = (
+            f"Cannot run unapproved or modified plan '{plan_id}' (status: {plan.status.value})."
+        )
+        typer.echo(
+            json.dumps(
+                {"error": err_msg, "status": "error"},
+                separators=(",", ":"),
+            ),
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    run_id = f"run-{uuid.uuid4().hex[:8]}"
+    trans_service = _create_transformation_service(checkpoint_store)
+
+    try:
+        staging_dir, initial_changeset = trans_service.stage(
+            staging_root=effective_staging_root,
+            run_id=run_id,
+            source_root=path,
+            plan=plan,
+        )
+    except Exception as err:
+        typer.echo(
+            json.dumps(
+                {"error": f"Staging failed: {err}", "status": "error"},
+                separators=(",", ":"),
+            ),
+            err=True,
+        )
+        raise typer.Exit(code=2) from err
+
+    angular_adapter = AngularAdapter()
+    commands: list[ValidationCommand] = []
+    for p in (
+        ValidationProfile.LINT,
+        ValidationProfile.TYPECHECK,
+        ValidationProfile.TEST,
+        ValidationProfile.BUILD,
+    ):
+        commands.extend(angular_adapter.get_validation_commands(p))
+
+    runner: CommandRunnerPort
+    if fake_runner:
+        runner = FakeCommandRunner(
+            default_status=ValidationStatus.FAILED if fail_validation else ValidationStatus.PASSED,
+            default_exit_code=1 if fail_validation else 0,
+            default_output=(
+                "Simulated failure diagnostic: syntax error in component"
+                if fail_validation
+                else "All checks passed."
+            ),
+            diagnostics=("syntax error in component",) if fail_validation else (),
+        )
+    else:
+        runner = SubprocessCommandRunner()
+
+    val_service = ValidationService(command_runner=runner, audit_logger=checkpoint_store)
+    val_results = val_service.validate(staging_dir, commands, run_id=run_id)
+
+    repair_attempts: list[RepairAttempt] = []
+    latest_changeset = initial_changeset
+    step_id = plan.steps[0].step_id if plan.steps else "step-001"
+
+    if any(r.status != ValidationStatus.PASSED for r in val_results) and auto_repair:
+        repair_service = BoundedRepairService(
+            command_runner=runner,
+            workspace_adapter=LocalWorkspaceAdapter(),
+            validation_service=val_service,
+            audit_logger=checkpoint_store,
+            checkpoint_store=checkpoint_store,
+            max_budget=max_repairs,
+        )
+        _, latest_changeset, repair_attempts, val_results = repair_service.run_repair_loop(
+            staging_dir=staging_dir,
+            initial_changeset=initial_changeset,
+            plan=plan,
+            step_id=step_id,
+            commands=commands,
+            initial_results=val_results,
+            max_attempts=max_repairs,
+        )
+
+    report_service = ReportService(checkpoint_store=checkpoint_store, audit_logger=checkpoint_store)
+    report = report_service.compile_report(
+        run_id=run_id,
+        plan_id=plan.plan_id,
+        source_root=str(path),
+        staging_root=str(staging_dir),
+        validation_results=val_results,
+        repair_attempts=repair_attempts,
+        applied_changeset=latest_changeset
+        if all(r.status == ValidationStatus.PASSED for r in val_results)
+        else None,
+    )
+
+    report_output_dir = output_dir or (effective_state_dir / "reports")
+    json_report_path, md_report_path = report_service.save_report(
+        report, output_dir=report_output_dir
+    )
+
+    summary_payload = {
+        "json_report_path": str(json_report_path),
+        "md_report_path": str(md_report_path),
+        "plan_id": plan.plan_id,
+        "repair_attempts_count": len(report.repair_attempts),
+        "run_id": run_id,
+        "staging_path": str(staging_dir),
+        "status": report.status.value,
+        "validation_checks_count": len(report.validation_results),
+    }
+
+    if report.status == RunStatus.SUCCESS:
+        typer.echo(json.dumps(summary_payload, separators=(",", ":"), sort_keys=True))
+    else:
+        typer.echo(json.dumps(summary_payload, separators=(",", ":"), sort_keys=True), err=True)
         raise typer.Exit(code=2)
 
 

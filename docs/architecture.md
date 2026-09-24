@@ -118,3 +118,26 @@ Phase 4 introduces isolated workspace staging and the ADR-8 controlled apply pro
    - **Postcondition Validation**: Validates file presence, deletion, file modes, and SHA-256 content digests.
    - **Verified Rollback**: On any apply error, restores original files from backup snapshots and verifies restored state; transitions to `RolledBack`.
    - **Double-Fault State (`RecoveryRequired`)**: If rollback itself fails or leaves uncertain state, immediately halts and enters `RecoveryRequired`, preserving detailed diagnostic context for manual operator intervention.
+
+## Allowlisted Validation & Bounded Repair Loop (Invariant 26)
+
+Phase 5 introduces allowlisted validation and the Invariant 26 bounded self-repair loop:
+
+1. **Command Runner Boundary (`CommandRunnerPort`)**:
+   - `SubprocessCommandRunner`: Executes allowlisted subprocess commands strictly confined within a staging workspace.
+   - Confinement controls: Fixed executable allowlist (`git`, `node`, `npm`, `npx`, `ng`, `tsc`, `pytest`, `python`, `uv`), `shell=False`, working directory confinement, and rejection of shell metacharacters (`;`, `&&`, `|`, `` ` ``, `$`, `\n`) in arguments.
+   - Sanitization: Strips all API keys, secrets, tokens, and credentials from the subprocess environment.
+   - Bounded execution: Configurable timeouts (SIGKILL on expiry) and bounded output truncation (64KB cap with full output SHA-256 digest).
+   - `FakeCommandRunner`: Deterministic offline test double supporting canned results, configurable outcomes, and command execution tracking without subprocess spawning or network access.
+2. **Validation Profiles**:
+   - Target framework adapters (`AngularAdapter`, `EmberClassicAdapter`) own typed validation commands for profiles `LINT`, `TYPECHECK`, `TEST`, and `BUILD`.
+   - `ValidationService` coordinates execution of validation suites against staging workspaces, logging structured audit events for every check.
+3. **Bounded Repair Loop (`BoundedRepairService`)**:
+   - Enforces Invariant 26: Maximum repair budget (default 3 attempts).
+   - Each repair cites an extracted validation diagnostic and emits a **NEW** `ChangeSet` with a fresh `changeset_id` and fresh RFC 8785 `changeset_digest`.
+   - Scope Containment: Verifies all repaired files are within the approved step scope; unapproved file modifications halt the loop immediately with status `DISALLOWED`.
+   - Termination on repeated failure: Detects identical consecutive validation failures (matching diagnostic and output digest) and halts early rather than burning attempts without progress.
+4. **Run Reporting (`ReportService`)**:
+   - Compiles `MigrationRunReport` summarizing inventory, plan, applied changes, validation checks, repair history, and overall status (`SUCCESS`, `FAILED`, `ABORTED`).
+   - Persists reports canonically in SQLite `run_reports` table, generates machine-readable JSON and readable Markdown tables, and logs `RUN_REPORT` audit events.
+

@@ -5,7 +5,12 @@ from typing import Any, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from migration_agent.domain import ApprovalSignature, ChangeSet, MigrationPlan
+from migration_agent.domain import (
+    ApprovalSignature,
+    ChangeSet,
+    MigrationPlan,
+    MigrationRunReport,
+)
 
 
 class OperationalCheckpoint(BaseModel):
@@ -60,6 +65,12 @@ class CheckpointPort(Protocol):
 
     def get_changeset(self, changeset_id: str) -> ChangeSet | None:
         """Retrieve a ChangeSet by its unique ID."""
+
+    def save_run_report(self, report: MigrationRunReport) -> None:
+        """Persist a migration run report in the operational database."""
+
+    def get_run_report(self, run_id: str) -> MigrationRunReport | None:
+        """Retrieve a migration run report by its run ID."""
 
 
 class AuditLogPort(Protocol):

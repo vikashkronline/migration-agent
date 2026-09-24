@@ -48,12 +48,19 @@ cryptographic binding.
 | Target repository drift attack | Deterministic SHA-256 worktree fingerprinting verifies identical base state before applying; any drift enters `BaseChanged` and aborts. |
 | Partial apply failure | ADR-8 backup snapshots capture prior file contents before mutation; apply failure triggers verified rollback (`RolledBack`). |
 | Corrupted / unverified rollback | Double fault explicitly transitions to `RecoveryRequired`, halting automated operations and recording detailed diagnostic context for operator intervention. |
+| Model-generated shell injection | Never execute raw model shell commands; allowlist strictly limits executables (`git`, `node`, `npm`, `npx`, `ng`, `tsc`, `pytest`, `python`, `uv`), uses `shell=False`, and rejects shell metacharacters (`;`, `&&`, `|`, `` ` ``, `$`, `\n`) in arguments. |
+| Subprocess working directory escape | `SubprocessCommandRunner` verifies working directory is confined within allowed root; escapes return `DISALLOWED`. |
+| Credential disclosure via environment | Subprocess environment is actively sanitized by stripping all environment variables containing `KEY`, `SECRET`, `TOKEN`, `PASSWORD`, `CREDENTIAL`, `AUTH`, `OPENAI`, `GEMINI`. |
+| Subprocess hanging / denial of service | All commands run with bounded timeouts (`timeout_seconds`, default 60s); timeouts trigger SIGKILL and transition to `TIMED_OUT`. |
+| Log flooding / terminal resource exhaustion | Command output is capped at `max_output_bytes` (64KB); overflow appends `... [TRUNCATED]` while full SHA-256 digest is preserved for verification. |
+| Infinite self-repair loop | Invariant 26 limits repair loop to max 3 attempts; repeated identical failures immediately terminate early without wasting budget. |
+| Scope expansion attack during repair | Invariant 26 validates candidate repair ChangeSets against approved step scope; modifying unapproved files halts loop with `DISALLOWED`. |
 
 ## Residual risks and deferred controls
 
-- Subprocess execution and validation commands (Phase 5) are not yet allowlisted or executed in staging.
 - File classification and secret-name rules are intentionally conservative but cannot
   recognize every organization-specific secret convention.
 - Mode A (cryptographically verified SSH/GPG keys) currently records identity fingerprints;
   integration with native ssh-agent/gpg binaries is expanded in later phases.
-- Bounded repair loops and validation test runners are deferred to Phase 5.
+- Resumable checkpoints across process restarts and full audit journal replay are deferred to Phase 6.
+
