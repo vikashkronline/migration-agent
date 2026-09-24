@@ -67,3 +67,28 @@ Testing LLM-integrated software must not require external network requests or ve
 A deterministic `FakeAgentRuntime` enables comprehensive offline testing of parsing, tool limits,
 evidence validation, CLI options, and representative migration findings. Live provider tests are isolated
 behind explicit opt-in markers. Remote trace exports are disabled by default for privacy and local safety.
+
+## Phase 3
+
+Planning must remain strictly decoupled from transformation. A migration plan is an immutable,
+declarative DAG of typed steps specifying dependencies, scope, risk, confidence, evidence citations,
+expected files, validation strategies, rollback notes, and acceptance criteria. Generating a plan
+mutates zero application files.
+
+Canonical metadata digests (RFC 8785 JSON Canonicalization Scheme) are fundamentally different from
+raw file byte hashing (SHA-256 over arbitrary bytes). Metadata schemas must hash consistently
+regardless of dictionary key insertion order, whitespace variances, or floating point formatting.
+Excluding volatile metadata (timestamps, status, approval signatures) from the plan content digest
+ensures that the digest binds uniquely to the execution intent of the plan.
+
+Cryptographic approval binding (ADR-2) eliminates stale approvals. An `ApprovalSignature` binds both
+the exact RFC 8785 plan content digest and the active project policy digest. Any alteration to the
+plan's steps, expected files, dependencies, or validation checks immediately changes the computed plan
+digest, causing `verify_approval()` to evaluate to `False` and invalidating the approval token. Similarly,
+revising the active repository safety policy invalidates the approval token.
+
+Storage tiering (ADR-1) separates durable governance from operational state. Durable Git assets
+reside in `.agent/` (manifest, safety policy, exported plans), operational run state and checkpoints
+reside in a local SQLite database (`checkpoints.db`), and human/tool auditability is preserved via
+an append-only JSONL mirror (`audit.jsonl`). Neither domain nor application services know about SQLite
+or filesystem details, accessing storage solely through `CheckpointPort`, `AuditLogPort`, and `GovernancePort`.

@@ -2,17 +2,27 @@
 
 ## Current boundary
 
-Phases 0 and 1 contain configuration, typed domain models, a CLI health check, and
-deterministic repository inventory. The package uses a `src` layout so tests exercise the
-installed package rather than importing directly from the checkout by accident.
+Phases 0 through 3 contain configuration, typed domain models, a CLI health check,
+deterministic repository inventory, a read-only analysis agent, and typed migration planning
+with 4-tier storage and approval signatures. The package uses a `src` layout so tests exercise
+the installed package rather than importing directly from the checkout by accident.
 
 ```text
 CLI/composition root
-    -> InventoryService
-        -> FilesystemInspectorPort <- SafeFilesystemInspector
-        -> FrameworkAdapterRegistry <- EmberClassicAdapter / AngularAdapter
-    -> InventoryReportWriter
-    -> domain models
+    -> PlanningService
+        -> InventoryService
+            -> FilesystemInspectorPort <- SafeFilesystemInspector
+            -> FrameworkAdapterRegistry <- EmberClassicAdapter / AngularAdapter
+        -> AnalysisService
+            -> SnapshotFileReader
+            -> AgentRuntimePort <- GeminiRuntimeAdapter (DEFAULT)
+                                <- OpenAIAgentsRuntimeAdapter (PARALLEL)
+                                <- FakeAgentRuntime (OFFLINE)
+        -> RuleBasedPlanValidator
+        -> CheckpointPort <- SqliteCheckpointStore (checkpoints.db)
+        -> AuditLogPort <- SqliteCheckpointStore (audit.jsonl append mirror)
+        -> GovernancePort <- GitGovernanceAdapter (.agent/)
+    -> domain models (MigrationPlan, MigrationStep, ApprovalSignature)
 ```
 
 The dependency direction points inward. `migration_agent.domain` may use Python and
@@ -40,25 +50,18 @@ written atomically to a directory that cannot overlap the source repository.
 ## Configuration
 
 `Settings` reads explicitly named environment variables through `pydantic-settings`.
-`MIGRATION_AGENT_MODEL` is optional because Phase 0 performs no model call. Configuration
-does not read or expose an API key.
+`AGENT_RUNTIME_PROVIDER` (default `gemini`), `AGENT_RUNTIME_MODEL`, and legacy `MIGRATION_AGENT_MODEL`
+configure model selection. `AGENT_STATE_DIR` and `AGENT_MAX_STEP_FILES` configure state directory
+and validator size limits. Configuration does not read or expose an API key.
 
 ## Agent runtime boundary
 
-Phase 2 introduces the provider-neutral `AgentRuntimePort` application boundary:
+`AgentRuntimePort` defines the application boundary for analysis and planning:
 
 ```text
-CLI/composition root
-    -> AnalysisService
-        -> InventoryService
-            -> FilesystemInspectorPort <- SafeFilesystemInspector
-            -> FrameworkAdapterRegistry <- EmberClassicAdapter / AngularAdapter
-        -> SnapshotFileReader
-        -> AgentRuntimePort <- GeminiRuntimeAdapter (DEFAULT)
-                            <- OpenAIAgentsRuntimeAdapter (PARALLEL)
-                            <- FakeAgentRuntime (OFFLINE)
-    -> AnalysisReportWriter
-    -> domain models (AnalysisResult, AnalysisFinding, EvidenceReference)
+AgentRuntimePort
+├── analyze(request: AnalysisRequest, file_reader: FileReaderPort) -> AnalysisResult
+└── plan(request: PlanningRequest) -> list[MigrationStep]
 ```
 
 The core domain and application layers remain strictly provider-neutral. Neither `google.genai`
@@ -67,12 +70,26 @@ default configured provider via the official Google GenAI SDK; OpenAI is support
 provider via the OpenAI Agents SDK; `FakeAgentRuntime` enables 100% offline verification. Remote
 Agents SDK trace export is disabled by default.
 
-The agent interacts with the repository exclusively through bounded read-only tools:
+The analysis agent interacts with the repository exclusively through bounded read-only tools:
 `query_inventory` (accessing pre-built inventory data) and `read_repository_file` (accessing eligible
 snapshot files with character and line boundaries). Post-generation evidence validation cross-references
 all cited evidence paths against the deterministic inventory, marking any unverified references and
 downgrading finding confidence.
 
-The source repository remains strictly read-only. Report outputs must reside in a separate non-overlapping
-root and are written atomically. Later phases will introduce staging workspaces, Git governance, and
-plan lifecycle management. Implementations and tests remain fully portable across Windows and Linux.
+## Planning & 4-tier storage topology (ADR-1, ADR-2)
+
+Phase 3 introduces typed migration planning and the ADR-1 storage foundation:
+
+1. **Git Governance (`.agent/`)**: Durable project governance stored in the target repository. Includes
+   `.agent/manifest.json` (platform version and project metadata), `.agent/policy.json` (operational safety
+   rules and protected paths), and `.agent/plans/<plan_id>.json` (exported migration plans).
+2. **SQLite (`checkpoints.db`)**: Canonical local operational run state, idempotency tracking, and
+   checkpoints (`plans`, `approvals`, `checkpoints`, `audit_events` tables).
+3. **JSONL (`audit.jsonl`)**: Append-only audit stream mirror for human and external tool inspection.
+4. **RFC 8785 Canonical Digests & Cryptographic Approval Binding**: Deterministic canonical JSON hashing
+   (excluding volatile timestamps and status). `ApprovalSignature` cryptographically binds actor identity,
+   the exact plan content digest, and the active project policy digest. Any modification to a plan or its
+   underlying safety policy invalidates the approval token.
+
+Source and staging repositories remain completely read-only throughout planning. No code transformations
+occur until subsequent phases. Implementations and tests remain fully portable across Windows and Linux.

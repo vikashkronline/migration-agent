@@ -9,14 +9,31 @@ from typing import Annotated
 
 import typer
 
-from migration_agent.adapters.agents import OpenAIAgentsRuntimeAdapter
-from migration_agent.adapters.fake_runtime import FakeAgentRuntime
-from migration_agent.adapters.filesystem import SafeFilesystemInspector
-from migration_agent.adapters.frameworks import AngularAdapter, EmberClassicAdapter
-from migration_agent.adapters.gemini import GeminiRuntimeAdapter
-from migration_agent.adapters.reporting import AnalysisReportWriter, InventoryReportWriter
-from migration_agent.application import AnalysisService, InventoryService
+from migration_agent.adapters import (
+    AnalysisReportWriter,
+    AngularAdapter,
+    EmberClassicAdapter,
+    FakeAgentRuntime,
+    GeminiRuntimeAdapter,
+    GitGovernanceAdapter,
+    InventoryReportWriter,
+    OpenAIAgentsRuntimeAdapter,
+    SafeFilesystemInspector,
+    SqliteCheckpointStore,
+)
+from migration_agent.application import (
+    AnalysisService,
+    InventoryService,
+    PlanningService,
+    RuleBasedPlanValidator,
+)
 from migration_agent.config import Settings
+from migration_agent.domain import (
+    AnalysisResult,
+    AssuranceLevel,
+    ProjectInventory,
+    compute_plan_digest,
+)
 from migration_agent.ports import AgentRuntimePort, FrameworkAdapterRegistry, InspectionPolicy
 
 app = typer.Typer(
@@ -24,6 +41,13 @@ app = typer.Typer(
     no_args_is_help=True,
     pretty_exceptions_enable=False,
 )
+
+plan_app = typer.Typer(
+    help="Create, inspect, approve, and reject typed migration plans.",
+    no_args_is_help=True,
+    pretty_exceptions_enable=False,
+)
+app.add_typer(plan_app, name="plan")
 
 _MINIMUM_PYTHON = (3, 12)
 _RUNTIME_DISTRIBUTIONS = (
@@ -176,6 +200,47 @@ def inventory_command(
     )
 
 
+def _resolve_runtime(
+    provider: str | None,
+    model: str | None,
+    fake_runtime: bool,
+    settings: Settings,
+) -> tuple[AgentRuntimePort, str, str]:
+    chosen_provider = (provider or settings.runtime_provider or "gemini").strip().lower()
+
+    if chosen_provider not in ("gemini", "openai", "fake"):
+        raise ValueError(
+            f"Unsupported runtime provider '{chosen_provider}'. "
+            "Supported providers: 'gemini', 'openai', 'fake'."
+        )
+
+    if chosen_provider == "gemini":
+        default_model = "gemini-2.5-pro"
+    elif chosen_provider == "openai":
+        default_model = "gpt-4o"
+    else:
+        default_model = "fake-model"
+
+    chosen_model = model or settings.effective_model or default_model
+
+    use_fake = (
+        fake_runtime
+        or os.getenv("MIGRATION_AGENT_FAKE_RUNTIME") == "1"
+        or chosen_provider == "fake"
+    )
+    runtime: AgentRuntimePort
+    if use_fake:
+        runtime = FakeAgentRuntime()
+    elif chosen_provider == "gemini":
+        runtime = GeminiRuntimeAdapter()
+    elif chosen_provider == "openai":
+        runtime = OpenAIAgentsRuntimeAdapter()
+    else:
+        runtime = FakeAgentRuntime()
+
+    return runtime, chosen_provider, chosen_model
+
+
 @app.command("analyze")
 def analyze_command(
     path: Annotated[
@@ -246,48 +311,16 @@ def analyze_command(
 ) -> None:
     """Analyze repository using a read-only agent to generate typed findings."""
     settings = Settings()
-    chosen_provider = (provider or settings.runtime_provider or "gemini").strip().lower()
-
-    if chosen_provider not in ("gemini", "openai", "fake"):
+    try:
+        runtime, chosen_provider, chosen_model = _resolve_runtime(
+            provider, model, fake_runtime, settings
+        )
+    except ValueError as err:
         typer.echo(
-            json.dumps(
-                {
-                    "error": (
-                        f"Unsupported runtime provider '{chosen_provider}'. "
-                        "Supported providers: 'gemini', 'openai', 'fake'."
-                    ),
-                    "status": "error",
-                },
-                separators=(",", ":"),
-                sort_keys=True,
-            ),
+            json.dumps({"error": str(err), "status": "error"}, separators=(",", ":")),
             err=True,
         )
-        raise typer.Exit(code=2)
-
-    if chosen_provider == "gemini":
-        default_model = "gemini-2.5-pro"
-    elif chosen_provider == "openai":
-        default_model = "gpt-4o"
-    else:
-        default_model = "fake-model"
-
-    chosen_model = model or settings.effective_model or default_model
-
-    runtime: AgentRuntimePort
-    use_fake = (
-        fake_runtime
-        or os.getenv("MIGRATION_AGENT_FAKE_RUNTIME") == "1"
-        or chosen_provider == "fake"
-    )
-    if use_fake:
-        runtime = FakeAgentRuntime()
-    elif chosen_provider == "gemini":
-        runtime = GeminiRuntimeAdapter()
-    elif chosen_provider == "openai":
-        runtime = OpenAIAgentsRuntimeAdapter()
-    else:
-        runtime = FakeAgentRuntime()
+        raise typer.Exit(code=2) from err
 
     service = AnalysisService(
         filesystem=SafeFilesystemInspector(),
@@ -330,6 +363,455 @@ def analyze_command(
             sort_keys=True,
         )
     )
+
+
+@plan_app.command("create")
+def plan_create_command(
+    path: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            help="Read-only source repository to plan migration for.",
+        ),
+    ],
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "--output",
+            "-o",
+            help="Directory for .agent/ governance assets. Defaults to target repository root.",
+        ),
+    ] = None,
+    inventory: Annotated[
+        Path | None,
+        typer.Option(
+            "--inventory",
+            "-i",
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+            help="Path to pre-computed inventory.json (generated automatically if omitted).",
+        ),
+    ] = None,
+    analysis: Annotated[
+        Path | None,
+        typer.Option(
+            "--analysis",
+            "-a",
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+            help="Path to pre-computed analysis.json (generated automatically if omitted).",
+        ),
+    ] = None,
+    provider: Annotated[
+        str | None,
+        typer.Option(
+            "--provider",
+            "-p",
+            help="LLM runtime provider: 'gemini' (default) or 'openai'.",
+        ),
+    ] = None,
+    model: Annotated[
+        str | None,
+        typer.Option(
+            "--model",
+            "-m",
+            help="LLM model identifier to use.",
+        ),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run/--no-dry-run",
+            help="Run planning without making changes to target source.",
+        ),
+    ] = True,
+    max_turns: Annotated[
+        int,
+        typer.Option(
+            "--max-turns",
+            min=1,
+            help="Maximum agent turn iterations.",
+        ),
+    ] = 10,
+    fake_runtime: Annotated[
+        bool,
+        typer.Option(
+            "--fake-runtime",
+            help="Force use of deterministic offline fake runtime.",
+        ),
+    ] = False,
+    state_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--state-dir",
+            help="Custom directory for SQLite checkpoints and audit log.",
+        ),
+    ] = None,
+) -> None:
+    """Generate, validate, and persist an ordered migration plan."""
+    settings = Settings()
+    try:
+        runtime, chosen_provider, chosen_model = _resolve_runtime(
+            provider, model, fake_runtime, settings
+        )
+    except ValueError as err:
+        typer.echo(
+            json.dumps({"error": str(err), "status": "error"}, separators=(",", ":")),
+            err=True,
+        )
+        raise typer.Exit(code=2) from err
+
+    effective_state_dir = settings.resolve_state_dir(state_dir)
+    checkpoint_store = SqliteCheckpointStore(effective_state_dir)
+    governance = GitGovernanceAdapter()
+    validator = RuleBasedPlanValidator(max_step_files=settings.max_step_files)
+
+    try:
+        # Resolve or run inventory
+        if inventory is not None:
+            project_inventory = ProjectInventory.model_validate_json(
+                inventory.read_text(encoding="utf-8")
+            )
+        else:
+            inv_service = InventoryService(
+                filesystem=SafeFilesystemInspector(),
+                frameworks=FrameworkAdapterRegistry((EmberClassicAdapter(), AngularAdapter())),
+            )
+            project_inventory = inv_service.inventory(path)
+
+        # Resolve or run analysis
+        if analysis is not None:
+            analysis_result = AnalysisResult.model_validate_json(
+                analysis.read_text(encoding="utf-8")
+            )
+        else:
+            an_service = AnalysisService(
+                filesystem=SafeFilesystemInspector(),
+                frameworks=FrameworkAdapterRegistry((EmberClassicAdapter(), AngularAdapter())),
+                runtime=runtime,
+            )
+            _, analysis_result = an_service.analyze(
+                path,
+                provider=chosen_provider,
+                model=chosen_model,
+                dry_run=dry_run,
+            )
+
+        planning_service = PlanningService(
+            runtime=runtime,
+            checkpoint_store=checkpoint_store,
+            audit_logger=checkpoint_store,
+            governance=governance,
+            validator=validator,
+        )
+
+        target_governance_root = str(output or path)
+        plan, validation = planning_service.create_plan(
+            inventory=project_inventory,
+            analysis=analysis_result,
+            project_root=target_governance_root,
+            provider=chosen_provider,
+            model=chosen_model,
+            max_turns=max_turns,
+            dry_run=dry_run,
+        )
+
+        plan_digest = compute_plan_digest(plan)
+        export_path = str(
+            Path(target_governance_root) / ".agent" / "plans" / f"{plan.plan_id}.json"
+        )
+
+        typer.echo(
+            json.dumps(
+                {
+                    "errors": validation.errors,
+                    "export_file": export_path,
+                    "is_valid": validation.is_valid,
+                    "plan_digest": plan_digest,
+                    "plan_id": plan.plan_id,
+                    "policy_digest": plan.policy_digest,
+                    "status": plan.status.value,
+                    "step_count": len(plan.steps),
+                    "warnings": validation.warnings,
+                },
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+        )
+        if not validation.is_valid:
+            raise typer.Exit(code=1)
+    except (OSError, ValueError) as error:
+        typer.echo(
+            json.dumps(
+                {"error": str(error), "status": "error"},
+                separators=(",", ":"),
+                sort_keys=True,
+            ),
+            err=True,
+        )
+        raise typer.Exit(code=2) from error
+
+
+@plan_app.command("show")
+def plan_show_command(
+    plan_id: Annotated[
+        str,
+        typer.Argument(help="Unique identifier of the migration plan."),
+    ],
+    project_root: Annotated[
+        Path | None,
+        typer.Option(
+            "--project-root",
+            "-r",
+            help="Target repository root containing .agent/ governance assets.",
+        ),
+    ] = None,
+    state_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--state-dir",
+            help="Custom directory for SQLite checkpoints.",
+        ),
+    ] = None,
+    output_format: Annotated[
+        str,
+        typer.Option(
+            "--format",
+            "-f",
+            help="Output format: 'json' or 'summary'.",
+        ),
+    ] = "json",
+) -> None:
+    """Display the details and current state of a migration plan."""
+    settings = Settings()
+    effective_state_dir = settings.resolve_state_dir(state_dir)
+    checkpoint_store = SqliteCheckpointStore(effective_state_dir)
+    governance = GitGovernanceAdapter()
+
+    plan = checkpoint_store.get_plan(plan_id)
+    if plan is None and project_root is not None:
+        plan = governance.load_plan(str(project_root), plan_id)
+
+    if plan is None:
+        typer.echo(
+            json.dumps(
+                {"error": f"Plan '{plan_id}' not found.", "status": "error"},
+                separators=(",", ":"),
+                sort_keys=True,
+            ),
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    if output_format.lower() == "summary":
+        typer.echo(f"Plan ID:        {plan.plan_id}")
+        typer.echo(f"Status:         {plan.status.value}")
+        typer.echo(f"Source Root:    {plan.source_root}")
+        typer.echo(f"Steps Count:    {len(plan.steps)}")
+        typer.echo(f"Plan Digest:    {compute_plan_digest(plan)}")
+        typer.echo(f"Policy Digest:  {plan.policy_digest}")
+        if plan.approval:
+            actor = plan.approval.actor
+            mode = plan.approval.assurance_level.value
+            typer.echo(f"Approved By:    {actor} ({mode})")
+        if plan.rejection_reason:
+            typer.echo(f"Rejection:      {plan.rejection_reason}")
+    else:
+        typer.echo(plan.model_dump_json(indent=2))
+
+
+@plan_app.command("approve")
+def plan_approve_command(
+    plan_id: Annotated[
+        str,
+        typer.Argument(help="Unique identifier of the migration plan."),
+    ],
+    actor: Annotated[
+        str,
+        typer.Option(
+            "--actor",
+            "-a",
+            help="Actor identity (key fingerprint, username, or role).",
+        ),
+    ],
+    assurance_level: Annotated[
+        str,
+        typer.Option(
+            "--assurance-level",
+            help="Assurance level: 'MODE_A', 'MODE_B' (default), or 'MODE_C'.",
+        ),
+    ] = "MODE_B",
+    project_root: Annotated[
+        Path | None,
+        typer.Option(
+            "--project-root",
+            "-r",
+            help="Target repository root containing .agent/ governance assets.",
+        ),
+    ] = None,
+    state_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--state-dir",
+            help="Custom directory for SQLite checkpoints and audit log.",
+        ),
+    ] = None,
+) -> None:
+    """Approve a migration plan with cryptographic digest binding."""
+    settings = Settings()
+    try:
+        level = AssuranceLevel(assurance_level.upper())
+    except ValueError:
+        typer.echo(
+            json.dumps(
+                {
+                    "error": (
+                        f"Invalid assurance level '{assurance_level}'. "
+                        "Valid levels: 'MODE_A', 'MODE_B', 'MODE_C'."
+                    ),
+                    "status": "error",
+                },
+                separators=(",", ":"),
+                sort_keys=True,
+            ),
+            err=True,
+        )
+        raise typer.Exit(code=2) from None
+
+    if level == AssuranceLevel.MODE_C:
+        typer.echo(
+            json.dumps(
+                {
+                    "error": "Mode C (unauthenticated) cannot approve migration plans.",
+                    "status": "error",
+                },
+                separators=(",", ":"),
+                sort_keys=True,
+            ),
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    effective_state_dir = settings.resolve_state_dir(state_dir)
+    checkpoint_store = SqliteCheckpointStore(effective_state_dir)
+    governance = GitGovernanceAdapter()
+    runtime = FakeAgentRuntime()
+    service = PlanningService(
+        runtime=runtime,
+        checkpoint_store=checkpoint_store,
+        audit_logger=checkpoint_store,
+        governance=governance,
+    )
+
+    try:
+        approved_plan = service.approve_plan(
+            plan_id,
+            actor=actor,
+            assurance_level=level,
+            project_root=str(project_root) if project_root else None,
+        )
+        sig = approved_plan.approval
+        typer.echo(
+            json.dumps(
+                {
+                    "actor": sig.actor if sig else None,
+                    "assurance_level": sig.assurance_level.value if sig else None,
+                    "plan_digest": sig.plan_digest if sig else None,
+                    "plan_id": approved_plan.plan_id,
+                    "policy_digest": sig.policy_digest if sig else None,
+                    "signature": sig.signature if sig else None,
+                    "status": approved_plan.status.value,
+                },
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+        )
+    except ValueError as err:
+        typer.echo(
+            json.dumps({"error": str(err), "status": "error"}, separators=(",", ":")),
+            err=True,
+        )
+        raise typer.Exit(code=2) from err
+
+
+@plan_app.command("reject")
+def plan_reject_command(
+    plan_id: Annotated[
+        str,
+        typer.Argument(help="Unique identifier of the migration plan."),
+    ],
+    reason: Annotated[
+        str,
+        typer.Option(
+            "--reason",
+            help="Reason for rejecting the migration plan.",
+        ),
+    ],
+    actor: Annotated[
+        str,
+        typer.Option(
+            "--actor",
+            help="Actor rejecting the plan.",
+        ),
+    ] = "user",
+    project_root: Annotated[
+        Path | None,
+        typer.Option(
+            "--project-root",
+            "-r",
+            help="Target repository root containing .agent/ governance assets.",
+        ),
+    ] = None,
+    state_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--state-dir",
+            help="Custom directory for SQLite checkpoints and audit log.",
+        ),
+    ] = None,
+) -> None:
+    """Reject a migration plan and record the rejection reason."""
+    settings = Settings()
+    effective_state_dir = settings.resolve_state_dir(state_dir)
+    checkpoint_store = SqliteCheckpointStore(effective_state_dir)
+    governance = GitGovernanceAdapter()
+    runtime = FakeAgentRuntime()
+    service = PlanningService(
+        runtime=runtime,
+        checkpoint_store=checkpoint_store,
+        audit_logger=checkpoint_store,
+        governance=governance,
+    )
+
+    try:
+        rejected_plan = service.reject_plan(
+            plan_id,
+            reason=reason,
+            actor=actor,
+            project_root=str(project_root) if project_root else None,
+        )
+        typer.echo(
+            json.dumps(
+                {
+                    "plan_id": rejected_plan.plan_id,
+                    "rejection_reason": rejected_plan.rejection_reason,
+                    "status": rejected_plan.status.value,
+                },
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+        )
+    except ValueError as err:
+        typer.echo(
+            json.dumps({"error": str(err), "status": "error"}, separators=(",", ":")),
+            err=True,
+        )
+        raise typer.Exit(code=2) from err
 
 
 if __name__ == "__main__":

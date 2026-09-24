@@ -9,25 +9,35 @@ from migration_agent.domain import (
     EvidenceStatus,
     FindingCategory,
     FindingSeverity,
+    MigrationStep,
     ProjectInventory,
+    StepRisk,
 )
-from migration_agent.ports import AgentRuntimePort, AnalysisRequest, FileReaderPort
+from migration_agent.ports import (
+    AgentRuntimePort,
+    AnalysisRequest,
+    FileReaderPort,
+    PlanningRequest,
+)
 
 
 class FakeAgentRuntime(AgentRuntimePort):
-    """Deterministic, offline runtime producing verifiable migration findings."""
+    """Deterministic, offline runtime producing verifiable migration findings and plans."""
 
     def __init__(
         self,
         *,
         canned_result: AnalysisResult | None = None,
         canned_findings: tuple[AnalysisFinding, ...] | None = None,
+        canned_steps: list[MigrationStep] | None = None,
         summary: str | None = None,
     ) -> None:
         self.canned_result = canned_result
         self.canned_findings = canned_findings
+        self.canned_steps = canned_steps
         self.summary = summary or "Deterministic migration analysis completed successfully."
         self.recorded_requests: list[AnalysisRequest] = []
+        self.recorded_planning_requests: list[PlanningRequest] = []
 
     def analyze(
         self,
@@ -73,6 +83,107 @@ class FakeAgentRuntime(AgentRuntimePort):
             ),
         )
 
+    def plan(
+        self,
+        request: PlanningRequest,
+    ) -> list[MigrationStep]:
+        """Return canned or synthesized migration steps based on findings."""
+        self.recorded_planning_requests.append(request)
+
+        if self.canned_steps is not None:
+            return self.canned_steps
+
+        steps: list[MigrationStep] = []
+        dep_step_id = "step-001"
+
+        # Check for dependency findings
+        dep_findings = [
+            f for f in request.analysis.findings if f.category == FindingCategory.DEPENDENCY
+        ]
+        if dep_findings:
+            first_dep = dep_findings[0]
+            steps.append(
+                MigrationStep(
+                    step_id=dep_step_id,
+                    title="Initialize modern package dependencies",
+                    description=(
+                        "Update package.json to include target framework dependencies "
+                        "and remove obsolete packages."
+                    ),
+                    dependencies=[],
+                    scope="dependency",
+                    risk=StepRisk.LOW,
+                    confidence=0.95,
+                    evidence=list(first_dep.evidence_references),
+                    expected_files=["package.json"],
+                    validation_strategy=["npm install --dry-run"],
+                    rollback_note="Revert package.json changes.",
+                    acceptance_criteria=["Package manifest defines target runtime dependencies."],
+                    unresolved_questions=[],
+                )
+            )
+
+        # Check for component findings
+        comp_findings = [
+            f for f in request.analysis.findings if f.category == FindingCategory.COMPONENT
+        ]
+        for idx, comp_finding in enumerate(comp_findings, start=2):
+            step_id = f"step-{idx:03d}"
+            comp_name = comp_finding.id.replace("finding-component-", "")
+            prereqs = [dep_step_id] if steps else []
+            steps.append(
+                MigrationStep(
+                    step_id=step_id,
+                    title=f"Migrate {comp_name} to Angular Standalone component",
+                    description=(
+                        f"Transform {comp_name} component class and Handlebars template "
+                        "into a modern Angular standalone component with OnPush change detection."
+                    ),
+                    dependencies=prereqs,
+                    scope="component",
+                    risk=StepRisk.MEDIUM,
+                    confidence=0.90,
+                    evidence=list(comp_finding.evidence_references),
+                    expected_files=[
+                        f"src/app/components/{comp_name}/{comp_name}.component.ts",
+                        f"src/app/components/{comp_name}/{comp_name}.component.spec.ts",
+                    ],
+                    validation_strategy=["ng test --no-watch", "ng build"],
+                    rollback_note=f"Remove generated files in src/app/components/{comp_name}/.",
+                    acceptance_criteria=[
+                        f"{comp_name} component compiles cleanly and passes unit tests."
+                    ],
+                    unresolved_questions=list(comp_finding.questions),
+                )
+            )
+
+        if not steps and request.inventory.files:
+            steps.append(
+                MigrationStep(
+                    step_id="step-001",
+                    title="Baseline workspace setup",
+                    description="Verify source files and staging readiness.",
+                    dependencies=[],
+                    scope="workspace",
+                    risk=StepRisk.LOW,
+                    confidence=1.0,
+                    evidence=[
+                        EvidenceReference(
+                            path=request.inventory.files[0].path,
+                            description="Baseline repository evidence",
+                            status=EvidenceStatus.VALID,
+                        )
+                    ],
+                    expected_files=[request.inventory.files[0].path],
+                    validation_strategy=["test -f package.json"],
+                    rollback_note="No changes to revert.",
+                    acceptance_criteria=["Repository baseline verified."],
+                    unresolved_questions=[],
+                )
+            )
+
+        return steps
+
     def _synthesize_findings(
         self,
         inventory: ProjectInventory,
@@ -80,7 +191,6 @@ class FakeAgentRuntime(AgentRuntimePort):
     ) -> tuple[AnalysisFinding, ...]:
         findings: list[AnalysisFinding] = []
 
-        # Detect component files in inventory
         component_files = [
             f.path
             for f in inventory.files
@@ -133,7 +243,6 @@ class FakeAgentRuntime(AgentRuntimePort):
                 )
             )
 
-        # Detect dependency issues or legacy dependencies
         legacy_deps = [d for d in inventory.dependencies if "ember" in d.name.lower()]
         if legacy_deps:
             manifest_path = legacy_deps[0].manifest_path

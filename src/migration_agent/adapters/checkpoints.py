@@ -1,0 +1,226 @@
+"""SQLite and JSONL storage tiering adapter for operational checkpoints and audit logging."""
+
+import json
+import sqlite3
+from pathlib import Path
+
+from migration_agent.domain import ApprovalSignature, MigrationPlan, compute_plan_digest
+from migration_agent.ports import AuditEvent, CheckpointPort, OperationalCheckpoint
+
+
+class SqliteCheckpointStore(CheckpointPort):
+    """Canonical SQLite execution state store and append-only JSONL audit event mirror."""
+
+    def __init__(self, state_dir: Path | str) -> None:
+        self.state_dir = Path(state_dir)
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        self.db_path = self.state_dir / "checkpoints.db"
+        self.audit_log_path = self.state_dir / "audit.jsonl"
+        self._init_db()
+
+    def _get_connection(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(str(self.db_path))
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA foreign_keys = ON")
+        return conn
+
+    def _init_db(self) -> None:
+        with self._get_connection() as conn:
+            conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS plans (
+                    plan_id TEXT PRIMARY KEY,
+                    source_root TEXT NOT NULL,
+                    run_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    plan_digest TEXT NOT NULL,
+                    policy_digest TEXT NOT NULL,
+                    content_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS approvals (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    plan_id TEXT NOT NULL,
+                    actor TEXT NOT NULL,
+                    plan_digest TEXT NOT NULL,
+                    policy_digest TEXT NOT NULL,
+                    signature TEXT NOT NULL,
+                    assurance_level TEXT NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    FOREIGN KEY(plan_id) REFERENCES plans(plan_id) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS checkpoints (
+                    checkpoint_id TEXT PRIMARY KEY,
+                    run_id TEXT NOT NULL,
+                    step_id TEXT,
+                    checkpoint_type TEXT NOT NULL,
+                    state_data_json TEXT NOT NULL,
+                    timestamp TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS audit_events (
+                    event_id TEXT PRIMARY KEY,
+                    run_id TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    actor TEXT NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    payload_json TEXT NOT NULL
+                );
+                """
+            )
+
+    def save_plan(self, plan: MigrationPlan) -> None:
+        """Persist or update a migration plan in the operational SQLite database."""
+        plan_digest = compute_plan_digest(plan)
+        content_json = plan.model_dump_json()
+
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO plans (
+                    plan_id, source_root, run_id, status, plan_digest,
+                    policy_digest, content_json, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(plan_id) DO UPDATE SET
+                    status = excluded.status,
+                    plan_digest = excluded.plan_digest,
+                    policy_digest = excluded.policy_digest,
+                    content_json = excluded.content_json,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    plan.plan_id,
+                    plan.source_root,
+                    plan.run_id,
+                    plan.status.value,
+                    plan_digest,
+                    plan.policy_digest,
+                    content_json,
+                    plan.created_at.isoformat(),
+                    plan.updated_at.isoformat(),
+                ),
+            )
+
+    def get_plan(self, plan_id: str) -> MigrationPlan | None:
+        """Retrieve a migration plan by its unique ID."""
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT content_json FROM plans WHERE plan_id = ?",
+                (plan_id,),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                return None
+            return MigrationPlan.model_validate_json(row["content_json"])
+
+    def list_plans(self) -> list[MigrationPlan]:
+        """List all migration plans in descending order of creation."""
+        with self._get_connection() as conn:
+            cursor = conn.execute("SELECT content_json FROM plans ORDER BY created_at DESC")
+            return [MigrationPlan.model_validate_json(row["content_json"]) for row in cursor]
+
+    def save_approval(self, plan_id: str, approval: ApprovalSignature) -> None:
+        """Record an approval signature in the approvals table."""
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO approvals (
+                    plan_id, actor, plan_digest, policy_digest,
+                    signature, assurance_level, timestamp
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    plan_id,
+                    approval.actor,
+                    approval.plan_digest,
+                    approval.policy_digest,
+                    approval.signature,
+                    approval.assurance_level.value,
+                    approval.timestamp.isoformat(),
+                ),
+            )
+
+    def save_checkpoint(self, checkpoint: OperationalCheckpoint) -> None:
+        """Record an operational checkpoint."""
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO checkpoints (
+                    checkpoint_id, run_id, step_id, checkpoint_type,
+                    state_data_json, timestamp
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    checkpoint.checkpoint_id,
+                    checkpoint.run_id,
+                    checkpoint.step_id,
+                    checkpoint.checkpoint_type,
+                    json.dumps(checkpoint.state_data, sort_keys=True),
+                    checkpoint.timestamp.isoformat(),
+                ),
+            )
+
+    def list_checkpoints(self, run_id: str) -> list[OperationalCheckpoint]:
+        """List all checkpoints associated with a given run ID."""
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT * FROM checkpoints WHERE run_id = ? ORDER BY timestamp ASC",
+                (run_id,),
+            )
+            checkpoints: list[OperationalCheckpoint] = []
+            for row in cursor:
+                checkpoints.append(
+                    OperationalCheckpoint(
+                        checkpoint_id=row["checkpoint_id"],
+                        run_id=row["run_id"],
+                        step_id=row["step_id"],
+                        checkpoint_type=row["checkpoint_type"],
+                        state_data=json.loads(row["state_data_json"]),
+                        timestamp=row["timestamp"],
+                    )
+                )
+            return checkpoints
+
+    def record_event(self, event: AuditEvent) -> None:
+        """Persist audit event to SQLite and append to audit.jsonl."""
+        payload_json = json.dumps(event.payload, sort_keys=True)
+
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO audit_events (
+                    event_id, run_id, event_type, actor, timestamp, payload_json
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    event.event_id,
+                    event.run_id,
+                    event.event_type,
+                    event.actor,
+                    event.timestamp.isoformat(),
+                    payload_json,
+                ),
+            )
+
+        # Mirror append to audit.jsonl
+        line = json.dumps(
+            {
+                "event_id": event.event_id,
+                "run_id": event.run_id,
+                "event_type": event.event_type,
+                "actor": event.actor,
+                "timestamp": event.timestamp.isoformat(),
+                "payload": event.payload,
+            },
+            sort_keys=True,
+        )
+        with open(self.audit_log_path, "a", encoding="utf-8") as f:
+            f.write(line + "\n")

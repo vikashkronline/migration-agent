@@ -107,7 +107,44 @@ reports. Tests cover domain immutability, post-generation evidence audit, halluc
 containment, bounded tool queries and character caps, provider neutrality, fake runtime behavior,
 CLI options (`--provider`, `--model`, `--fake-runtime`), and strict layer boundaries.
 
+## Phase 3 — Complete
+
+Scope: typed migration planning, rule-based DAG validator with cycle detection, ADR-1 4-tier
+storage foundation (Git governance in `.agent/`, SQLite operational state in `checkpoints.db`,
+JSONL append-only audit stream in `audit.jsonl`), RFC 8785 canonical JSON metadata hashing,
+ADR-2 cryptographic approval binding (`ApprovalSignature`) with automatic approval invalidation
+upon plan or policy tampering, and `agent plan` CLI commands (`create`, `show`, `approve`, `reject`).
+
+Completed on 2026-09-25 using `uv` and an isolated CPython 3.12.14 environment. The dependency
+lock resolved 69 packages. The required evidence is:
+
+```text
+uv sync --all-groups
+Resolved 69 packages; checked 68 packages.
+
+uv run pytest
+76 passed, 2 skipped in 7.37s
+
+uv run ruff check .
+All checks passed!
+
+uv run ruff format --check .
+72 files already formatted.
+
+uv run mypy src
+Success: no issues found in 30 source files.
+
+uv run migration-agent doctor
+Exit code 0; emitted schema-versioned JSON with status "ok" checking google-genai, openai-agents, pydantic, pydantic-settings, typer.
+```
+
+A planning smoke run against the checked-in Ember Classic fixture produced structured migration
+steps (package dependency setup and component conversion), verified DAG dependencies, exported
+durable Git governance files (`.agent/manifest.json`, `.agent/policy.json`, `.agent/plans/<plan_id>.json`),
+recorded canonical SQLite operational run state and checkpoints, appended to `audit.jsonl`, and validated
+that any plan mutation immediately invalidates approval signatures.
+
 ## Later phases
 
-Phases 3 through 10 have not started. No code transformation, AST modification, validation
-runner, run persistence, Git state tiering, or multi-agent implementation exists.
+Phases 4 through 10 have not started. No code transformation, AST modification, staging workspace
+mutation, or validation runner execution exists.

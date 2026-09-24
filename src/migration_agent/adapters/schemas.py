@@ -8,6 +8,8 @@ from migration_agent.domain import (
     EvidenceReference,
     FindingCategory,
     FindingSeverity,
+    MigrationStep,
+    StepRisk,
 )
 from migration_agent.ports import AnalysisRequest
 
@@ -78,6 +80,69 @@ class AgentAnalysisOutput(BaseModel):
     )
 
 
+class AgentPlanStep(BaseModel):
+    """Structured step schema from planner agent."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    step_id: str = Field(description="Unique stable step identifier (e.g. 'step-001').")
+    title: str = Field(description="Short descriptive title of this migration step.")
+    description: str = Field(description="Detailed instructions and rationale for this step.")
+    dependencies: tuple[str, ...] = Field(
+        default=(),
+        description="IDs of prerequisite steps that must complete before this step.",
+    )
+    scope: str = Field(
+        default="component",
+        description="Scope category (e.g. 'component', 'dependency', 'configuration').",
+    )
+    risk: StepRisk = Field(
+        default=StepRisk.MEDIUM,
+        description="Assessed risk level: LOW, MEDIUM, HIGH, CRITICAL.",
+    )
+    confidence: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=1.0,
+        description="Confidence score between 0.0 and 1.0.",
+    )
+    evidence: tuple[AgentEvidenceReference, ...] = Field(
+        default=(),
+        description="Source evidence references justifying this step.",
+    )
+    expected_files: tuple[str, ...] = Field(
+        default=(),
+        description="Normalized relative POSIX paths of files expected to be created or modified.",
+    )
+    validation_strategy: tuple[str, ...] = Field(
+        default=(),
+        description="Validation commands or checks required to verify step completion.",
+    )
+    rollback_note: str = Field(
+        default="",
+        description="Actionable notes explaining how to revert this step if validation fails.",
+    )
+    acceptance_criteria: tuple[str, ...] = Field(
+        default=(),
+        description="Concrete, verifiable acceptance criteria for step success.",
+    )
+    unresolved_questions: tuple[str, ...] = Field(
+        default=(),
+        description="Open questions for developer review prior to execution.",
+    )
+
+
+class AgentPlanningOutput(BaseModel):
+    """Top-level structured output contract from planner agent."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    steps: tuple[AgentPlanStep, ...] = Field(
+        default=(),
+        description="Ordered sequence of migration steps.",
+    )
+
+
 def map_agent_output_to_domain(
     output: AgentAnalysisOutput,
     request: AnalysisRequest,
@@ -118,3 +183,35 @@ def map_agent_output_to_domain(
         assumptions=output.assumptions,
         questions=output.questions,
     )
+
+
+def map_agent_plan_output_to_domain(
+    output: AgentPlanningOutput,
+) -> list[MigrationStep]:
+    """Translate provider-agnostic planner structured output to domain MigrationStep list."""
+    return [
+        MigrationStep(
+            step_id=step.step_id,
+            title=step.title,
+            description=step.description,
+            dependencies=list(step.dependencies),
+            scope=step.scope,
+            risk=step.risk,
+            confidence=step.confidence,
+            evidence=[
+                EvidenceReference(
+                    path=ref.path,
+                    description=ref.description,
+                    line_number=ref.line_number,
+                    sample=ref.sample,
+                )
+                for ref in step.evidence
+            ],
+            expected_files=list(step.expected_files),
+            validation_strategy=list(step.validation_strategy),
+            rollback_note=step.rollback_note,
+            acceptance_criteria=list(step.acceptance_criteria),
+            unresolved_questions=list(step.unresolved_questions),
+        )
+        for step in output.steps
+    ]

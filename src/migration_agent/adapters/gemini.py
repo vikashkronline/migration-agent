@@ -1,4 +1,4 @@
-"""Google Gemini runtime adapter for read-only migration analysis."""
+"""Google Gemini runtime adapter for read-only migration analysis and planning."""
 
 import json
 import os
@@ -7,9 +7,19 @@ from typing import Any
 from google import genai
 from google.genai import types
 
-from migration_agent.adapters.schemas import AgentAnalysisOutput, map_agent_output_to_domain
-from migration_agent.domain import AnalysisResult
-from migration_agent.ports import AgentRuntimePort, AnalysisRequest, FileReaderPort
+from migration_agent.adapters.schemas import (
+    AgentAnalysisOutput,
+    AgentPlanningOutput,
+    map_agent_output_to_domain,
+    map_agent_plan_output_to_domain,
+)
+from migration_agent.domain import AnalysisResult, MigrationStep
+from migration_agent.ports import (
+    AgentRuntimePort,
+    AnalysisRequest,
+    FileReaderPort,
+    PlanningRequest,
+)
 
 
 class GeminiRuntimeAdapter(AgentRuntimePort):
@@ -18,16 +28,19 @@ class GeminiRuntimeAdapter(AgentRuntimePort):
     def __init__(self, api_key: str | None = None) -> None:
         self._api_key = api_key
 
+    def _get_api_key(self) -> str:
+        key = self._api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        if not key:
+            raise ValueError("Neither GEMINI_API_KEY nor GOOGLE_API_KEY is set in environment.")
+        return key
+
     def analyze(
         self,
         request: AnalysisRequest,
         file_reader: FileReaderPort,
     ) -> AnalysisResult:
         """Run read-only analysis using Google Gemini and return typed findings."""
-        key = self._api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-        if not key:
-            raise ValueError("Neither GEMINI_API_KEY nor GOOGLE_API_KEY is set in environment.")
-
+        key = self._get_api_key()
         client = genai.Client(api_key=key)
         eligible_paths = {f.path for f in request.inventory.files}
 
@@ -151,3 +164,63 @@ class GeminiRuntimeAdapter(AgentRuntimePort):
             raise ValueError("Gemini model returned empty response without structured output.")
 
         return map_agent_output_to_domain(agent_output, request)
+
+    def plan(
+        self,
+        request: PlanningRequest,
+    ) -> list[MigrationStep]:
+        """Generate structured migration steps using Google Gemini structured output."""
+        key = self._get_api_key()
+        client = genai.Client(api_key=key)
+
+        instructions = (
+            "You are a code migration planning agent. You convert repository inventory "
+            "and analysis findings into an ordered sequence of discrete migration steps.\n\n"
+            "Principles you must follow strictly:\n"
+            "1. Each step must have a unique stable ID (e.g. 'step-001', 'step-002').\n"
+            "2. Establish step dependencies to avoid cycles and form a valid DAG.\n"
+            "3. Every step must have a concrete, actionable validation strategy.\n"
+            "4. Only reference real evidence paths from analysis findings.\n"
+            "5. Include clear rollback notes and acceptance criteria.\n"
+            "6. Output must conform to the requested JSON schema."
+        )
+
+        findings_summary = [
+            {
+                "id": f.id,
+                "title": f.title,
+                "category": f.category.value,
+                "severity": f.severity.value,
+                "evidence": [e.path for e in f.evidence_references],
+            }
+            for f in request.analysis.findings
+        ]
+
+        user_prompt = (
+            f"Generate an ordered migration plan for '{request.inventory.repository.name}'.\n\n"
+            f"Analysis Findings:\n{json.dumps(findings_summary, indent=2)}\n\n"
+            "Produce structured migration steps following the planning instructions."
+        )
+
+        config = types.GenerateContentConfig(
+            system_instruction=instructions,
+            response_mime_type="application/json",
+            response_schema=AgentPlanningOutput,
+        )
+
+        model_name = request.model or "gemini-2.5-pro"
+        response = client.models.generate_content(
+            model=model_name,
+            contents=user_prompt,
+            config=config,
+        )
+
+        raw_parsed = getattr(response, "parsed", None)
+        if isinstance(raw_parsed, AgentPlanningOutput):
+            planning_output = raw_parsed
+        elif response.text:
+            planning_output = AgentPlanningOutput.model_validate_json(response.text)
+        else:
+            raise ValueError("Gemini model returned empty planning response.")
+
+        return map_agent_plan_output_to_domain(planning_output)

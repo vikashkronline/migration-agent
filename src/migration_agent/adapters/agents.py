@@ -1,4 +1,4 @@
-"""OpenAI Agents SDK runtime adapter for read-only migration analysis."""
+"""OpenAI Agents SDK runtime adapter for read-only migration analysis and planning."""
 
 import json
 from typing import Any
@@ -14,17 +14,24 @@ from agents import (
 
 from migration_agent.adapters.schemas import (
     AgentAnalysisOutput,
+    AgentPlanningOutput,
     map_agent_output_to_domain,
+    map_agent_plan_output_to_domain,
 )
-from migration_agent.domain import AnalysisResult, ProjectInventory
-from migration_agent.ports import AgentRuntimePort, AnalysisRequest, FileReaderPort
+from migration_agent.domain import AnalysisResult, MigrationStep, ProjectInventory
+from migration_agent.ports import (
+    AgentRuntimePort,
+    AnalysisRequest,
+    FileReaderPort,
+    PlanningRequest,
+)
 
 # Remote Agents SDK trace export is disabled by default for privacy and local execution safety.
 set_tracing_disabled(True)
 
 
 class OpenAIAgentsRuntimeAdapter(AgentRuntimePort):
-    """Application-hosted OpenAI Agents SDK adapter for read-only analysis."""
+    """Application-hosted OpenAI Agents SDK adapter for read-only analysis and planning."""
 
     def __init__(self) -> None:
         set_tracing_disabled(True)
@@ -68,6 +75,52 @@ class OpenAIAgentsRuntimeAdapter(AgentRuntimePort):
             raise TypeError(f"Unexpected agent output type: {type(raw_output)}")
 
         return map_agent_output_to_domain(agent_output, request)
+
+    def plan(
+        self,
+        request: PlanningRequest,
+    ) -> list[MigrationStep]:
+        """Generate structured migration steps using OpenAI Agents structured output."""
+        agent = self.create_planning_agent(
+            model=request.model,
+        )
+
+        findings_summary = [
+            {
+                "id": f.id,
+                "title": f.title,
+                "category": f.category.value,
+                "severity": f.severity.value,
+                "evidence": [e.path for e in f.evidence_references],
+            }
+            for f in request.analysis.findings
+        ]
+
+        user_prompt = (
+            f"Generate an ordered migration plan for '{request.inventory.repository.name}'.\n\n"
+            f"Analysis Findings:\n{json.dumps(findings_summary, indent=2)}\n\n"
+            "Produce structured migration steps following the planning instructions."
+        )
+
+        run_config = RunConfig(tracing_disabled=True)
+        run_result = Runner.run_sync(
+            agent,
+            user_prompt,
+            max_turns=request.max_turns,
+            run_config=run_config,
+        )
+
+        raw_output = run_result.final_output
+        if isinstance(raw_output, AgentPlanningOutput):
+            planning_output = raw_output
+        elif isinstance(raw_output, str):
+            planning_output = AgentPlanningOutput.model_validate_json(raw_output)
+        elif isinstance(raw_output, dict):
+            planning_output = AgentPlanningOutput.model_validate(raw_output)
+        else:
+            raise TypeError(f"Unexpected planner agent output type: {type(raw_output)}")
+
+        return map_agent_plan_output_to_domain(planning_output)
 
     @classmethod
     def create_analysis_agent(
@@ -180,4 +233,30 @@ class OpenAIAgentsRuntimeAdapter(AgentRuntimePort):
             model=model_name,
             tools=[query_tool, read_tool],
             output_type=AgentAnalysisOutput,
+        )
+
+    @classmethod
+    def create_planning_agent(
+        cls,
+        model: str,
+    ) -> Agent[None]:
+        """Create the focused migration planning agent."""
+        instructions = (
+            "You are a code migration planning agent. You convert repository inventory "
+            "and analysis findings into an ordered sequence of discrete migration steps.\n\n"
+            "Principles you must follow strictly:\n"
+            "1. Each step must have a unique stable ID (e.g. 'step-001', 'step-002').\n"
+            "2. Establish step dependencies to avoid cycles and form a valid DAG.\n"
+            "3. Every step must have a concrete, actionable validation strategy.\n"
+            "4. Only reference real evidence paths from analysis findings.\n"
+            "5. Include clear rollback notes and acceptance criteria.\n"
+            "6. Output must conform to the requested JSON schema."
+        )
+
+        model_name = model or "gpt-4o"
+        return Agent(
+            name="MigrationPlanningAgent",
+            instructions=instructions,
+            model=model_name,
+            output_type=AgentPlanningOutput,
         )
