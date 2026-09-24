@@ -67,5 +67,5 @@ cryptographic binding.
   recognize every organization-specific secret convention.
 - Mode A (cryptographically verified SSH/GPG keys) currently records identity fingerprints;
   integration with native ssh-agent/gpg binaries is expanded in later phases.
-- Cross-framework adapter capability negotiation and secondary framework pairs are deferred to Phase 7.
+- Specialist multi-agent role decomposition and evaluation-driven subagents are deferred to Phase 8.
 

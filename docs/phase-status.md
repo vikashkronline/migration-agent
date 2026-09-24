@@ -261,7 +261,43 @@ Exit code 0; emitted schema-versioned JSON with status "ok" checking google-gena
 An evaluation run against `tests/fixtures/ember-classic-mini` via `migration-agent eval` scored 1.0 precision, 1.0 recall, 1.0 F1 score,
 and passed offline verification in 14ms without network or live API keys.
 
+## Phase 7 — Complete
+
+Scope: Framework adapter capability negotiation (`FrameworkCapability`, `FrameworkCapabilities`, `NegotiationResult`),
+second reference migration pair (`AngularJsDirectiveAdapter`, `AngularJsDirectiveExtractor`, `AngularStandaloneComponentRenderer`),
+reusable adapter contract test suite (`test_framework_adapter_contract.py`) verified against all adapters,
+synthetic fixture (`tests/fixtures/angularjs-directive-mini`), complete decoupling of core services (`TransformationService`)
+ensuring 0% framework-specific conditionals, and offline evaluation benchmark scoring 1.0 F1 across both fixtures.
+
+Completed on 2026-09-25 using `uv` and an isolated CPython 3.12.14 environment. The dependency lock resolved 69 packages.
+The required evidence is:
+
+```text
+uv sync --all-groups
+Resolved 69 packages in 2ms; checked 68 packages in 14ms.
+
+uv run pytest
+188 passed, 2 skipped in 14.95s
+
+uv run ruff check .
+All checks passed!
+
+uv run ruff format --check .
+106 files already formatted.
+
+uv run mypy src
+Success: no issues found in 46 source files.
+
+uv run migration-agent doctor
+Exit code 0; emitted schema-versioned JSON with status "ok" checking google-genai, openai-agents, pydantic, pydantic-settings, typer.
+```
+
+Smoke runs across both reference fixtures executed successfully:
+1. `tests/fixtures/ember-classic-mini`: `migration-agent inventory` detected `ember-classic` with 1.0 confidence; `migration-agent eval` achieved 1.0 precision, 1.0 recall, and 1.0 F1 score in 312ms.
+2. `tests/fixtures/angularjs-directive-mini`: `migration-agent inventory` detected `angularjs-directive` with 1.0 confidence; `migration-agent eval` achieved 1.0 precision, 1.0 recall, and 1.0 F1 score in 109ms.
+Contract tests verify that all adapters conform to the `FrameworkAdapter` protocol, capability declarations, detection thresholds, and transformation boundaries.
+
 ## Later phases
 
-Phases 7 through 10 have not started. Framework adapter capability negotiation and reference migration pairs for Vue/React are deferred to Phase 7.
+Phases 8 through 10 have not started. Specialist subagents driven by evaluation evidence are deferred to Phase 8.
 

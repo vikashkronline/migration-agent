@@ -2,6 +2,7 @@
 
 import contextlib
 import difflib
+import re
 import uuid
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from migration_agent.domain import (
     FileOperation,
     MigrationPlan,
     PlanStatus,
+    SourceComponentBundle,
     compute_changeset_digest,
     compute_file_sha256,
     compute_worktree_fingerprint,
@@ -25,9 +27,19 @@ from migration_agent.ports import (
     CheckpointPort,
     ComponentExtractorPort,
     ComponentRendererPort,
+    FilesystemInspectorPort,
+    FrameworkAdapterRegistry,
+    InspectionPolicy,
     OperationalCheckpoint,
     WorkspacePort,
 )
+
+
+def _to_kebab_case(value: str) -> str:
+    """Convert PascalCase or camelCase or snake_case to kebab-case."""
+    s = re.sub(r"([a-z0-9])([A-Z])", r"\1-\2", value)
+    s = s.replace("_", "-").strip("-").lower()
+    return re.sub(r"-+", "-", s)
 
 
 class TransformationService:
@@ -36,16 +48,51 @@ class TransformationService:
     def __init__(
         self,
         workspace_adapter: WorkspacePort,
-        extractor: ComponentExtractorPort,
-        renderer: ComponentRendererPort,
+        extractor: ComponentExtractorPort | None = None,
+        renderer: ComponentRendererPort | None = None,
+        registry: FrameworkAdapterRegistry | None = None,
+        filesystem: FilesystemInspectorPort | None = None,
         audit_logger: AuditLogPort | None = None,
         checkpoint_store: CheckpointPort | None = None,
     ) -> None:
         self.workspace_adapter = workspace_adapter
         self.extractor = extractor
         self.renderer = renderer
+        self.registry = registry
+        self.filesystem = filesystem
         self.audit_logger = audit_logger
         self.checkpoint_store = checkpoint_store
+
+    def _resolve_pair(self, root: Path) -> tuple[ComponentExtractorPort, ComponentRendererPort]:
+        """Resolve extractor and renderer via explicit injection or capability negotiation."""
+        if self.extractor is not None and self.renderer is not None:
+            return self.extractor, self.renderer
+
+        if self.registry is not None and self.filesystem is not None:
+            snapshot = self.filesystem.inspect(root, InspectionPolicy())
+            fingerprints = self.registry.detect(snapshot)
+            if not fingerprints:
+                raise ValueError(f"No recognizable framework detected in source root '{root}'.")
+            source_framework = fingerprints[0].framework_id
+            target_framework = "angular"
+            negotiation = self.registry.negotiate_pair(source_framework, target_framework)
+            if not negotiation.supported:
+                raise ValueError(
+                    f"Capability negotiation failed between '{source_framework}' "
+                    f"and '{target_framework}': {negotiation.reason}"
+                )
+            src_adapter = self.registry.get_adapter(source_framework)
+            tgt_adapter = self.registry.get_adapter(target_framework)
+            if src_adapter is not None and tgt_adapter is not None:
+                ext = src_adapter.get_extractor()
+                rnd = tgt_adapter.get_renderer()
+                if ext is not None and rnd is not None:
+                    return ext, rnd
+
+        raise ValueError(
+            "TransformationService requires either explicit extractor/renderer "
+            "or a FrameworkAdapterRegistry with FilesystemInspectorPort."
+        )
 
     def preview(
         self,
@@ -56,53 +103,67 @@ class TransformationService:
         """Generate proposed ChangeSet and unified diff without modifying staging or source."""
         root = Path(source_root).resolve()
         fingerprint = compute_worktree_fingerprint(root)
+        extractor, renderer = self._resolve_pair(root)
 
         changes: list[FileChange] = []
         diff_chunks: list[str] = []
 
-        # Find Ember component and template files
-        comp_js = root / "app" / "components" / "user-card.js"
-        comp_hbs = root / "app" / "templates" / "components" / "user-card.hbs"
-        comp_css = root / "app" / "styles" / "app.css"
-
-        js_source = comp_js.read_text(encoding="utf-8") if comp_js.exists() else ""
-        hbs_source = comp_hbs.read_text(encoding="utf-8") if comp_hbs.exists() else ""
-        css_source = comp_css.read_text(encoding="utf-8") if comp_css.exists() else ""
-
-        intermediate = self.extractor.extract(js_source, hbs_source, css_source)
-
-        ts_code = self.renderer.render_component_ts(intermediate)
-        html_code = self.renderer.render_template_html(intermediate)
-        spec_code = self.renderer.render_spec_ts(intermediate)
-        scss_code = "// Component-scoped SCSS\n.user-card {\n  max-width: 480px;\n}\n"
-
-        generated_files = [
-            ("src/app/components/user-card/user-card.component.ts", ts_code.encode("utf-8")),
-            ("src/app/components/user-card/user-card.component.html", html_code.encode("utf-8")),
-            ("src/app/components/user-card/user-card.component.scss", scss_code.encode("utf-8")),
-            ("src/app/components/user-card/user-card.component.spec.ts", spec_code.encode("utf-8")),
-        ]
-
-        for rel_path, content_bytes in generated_files:
-            digest = compute_file_sha256(content_bytes)
-            change = FileChange(
-                path=rel_path,
-                operation=FileOperation.CREATE,
-                file_mode=FileMode.STANDARD,
-                content_digest=digest,
-                content_bytes=content_bytes,
+        bundles = extractor.discover_components(root)
+        if not bundles:
+            # Fallback for mock or custom extractors without discover_components
+            bundles = (
+                SourceComponentBundle(
+                    component_name="UserCard",
+                    source_files=(),
+                    component_source="",
+                    template_source="",
+                    style_source="",
+                ),
             )
-            changes.append(change)
 
-            # Generate unified diff
-            new_lines = content_bytes.decode("utf-8", errors="replace").splitlines(keepends=True)
-            diff = difflib.unified_diff(
-                [],
-                new_lines,
-                fromfile=f"a/{rel_path}",
-                tofile=f"b/{rel_path}",
+        for bundle in bundles:
+            intermediate = extractor.extract(
+                bundle.component_source,
+                bundle.template_source,
+                bundle.style_source,
             )
-            diff_chunks.append("".join(diff))
+
+            ts_code = renderer.render_component_ts(intermediate)
+            html_code = renderer.render_template_html(intermediate)
+            spec_code = renderer.render_spec_ts(intermediate)
+            scss_code = renderer.render_style_scss(intermediate)
+
+            kebab_name = _to_kebab_case(intermediate.name)
+            component_dir = f"src/app/components/{kebab_name}"
+
+            generated_files = [
+                (f"{component_dir}/{kebab_name}.component.ts", ts_code.encode("utf-8")),
+                (f"{component_dir}/{kebab_name}.component.html", html_code.encode("utf-8")),
+                (f"{component_dir}/{kebab_name}.component.scss", scss_code.encode("utf-8")),
+                (f"{component_dir}/{kebab_name}.component.spec.ts", spec_code.encode("utf-8")),
+            ]
+
+            for rel_path, content_bytes in generated_files:
+                digest = compute_file_sha256(content_bytes)
+                change = FileChange(
+                    path=rel_path,
+                    operation=FileOperation.CREATE,
+                    file_mode=FileMode.STANDARD,
+                    content_digest=digest,
+                    content_bytes=content_bytes,
+                )
+                changes.append(change)
+
+                new_lines = content_bytes.decode("utf-8", errors="replace").splitlines(
+                    keepends=True
+                )
+                diff = difflib.unified_diff(
+                    [],
+                    new_lines,
+                    fromfile=f"a/{rel_path}",
+                    tofile=f"b/{rel_path}",
+                )
+                diff_chunks.append("".join(diff))
 
         changeset_id = f"cs-{uuid.uuid4().hex[:8]}"
         target_step_id = step_id or (plan.steps[0].step_id if plan.steps else "step-001")

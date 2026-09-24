@@ -14,9 +14,8 @@ from typer.core import TyperGroup
 from migration_agent.adapters import (
     AnalysisReportWriter,
     AngularAdapter,
-    AngularStandaloneComponentRenderer,
+    AngularJsDirectiveAdapter,
     EmberClassicAdapter,
-    EmberClassicComponentExtractor,
     FakeAgentRuntime,
     FakeCommandRunner,
     GeminiRuntimeAdapter,
@@ -102,6 +101,16 @@ _RUNTIME_DISTRIBUTIONS = (
     "pydantic-settings",
     "typer",
 )
+
+
+def _create_framework_registry() -> FrameworkAdapterRegistry:
+    return FrameworkAdapterRegistry(
+        (
+            EmberClassicAdapter(),
+            AngularJsDirectiveAdapter(),
+            AngularAdapter(),
+        )
+    )
 
 
 @app.callback()
@@ -210,7 +219,7 @@ def inventory_command(
     """Create deterministic JSON and Markdown repository inventories."""
     service = InventoryService(
         filesystem=SafeFilesystemInspector(),
-        frameworks=FrameworkAdapterRegistry((EmberClassicAdapter(), AngularAdapter())),
+        frameworks=_create_framework_registry(),
     )
     try:
         project_inventory = service.inventory(
@@ -369,7 +378,7 @@ def analyze_command(
 
     service = AnalysisService(
         filesystem=SafeFilesystemInspector(),
-        frameworks=FrameworkAdapterRegistry((EmberClassicAdapter(), AngularAdapter())),
+        frameworks=_create_framework_registry(),
         runtime=runtime,
     )
 
@@ -525,7 +534,7 @@ def plan_create_command(
         else:
             inv_service = InventoryService(
                 filesystem=SafeFilesystemInspector(),
-                frameworks=FrameworkAdapterRegistry((EmberClassicAdapter(), AngularAdapter())),
+                frameworks=_create_framework_registry(),
             )
             project_inventory = inv_service.inventory(path)
 
@@ -537,7 +546,7 @@ def plan_create_command(
         else:
             an_service = AnalysisService(
                 filesystem=SafeFilesystemInspector(),
-                frameworks=FrameworkAdapterRegistry((EmberClassicAdapter(), AngularAdapter())),
+                frameworks=_create_framework_registry(),
                 runtime=runtime,
             )
             _, analysis_result = an_service.analyze(
@@ -864,8 +873,8 @@ def _create_transformation_service(
 ) -> TransformationService:
     return TransformationService(
         workspace_adapter=LocalWorkspaceAdapter(),
-        extractor=EmberClassicComponentExtractor(),
-        renderer=AngularStandaloneComponentRenderer(),
+        registry=_create_framework_registry(),
+        filesystem=SafeFilesystemInspector(),
         checkpoint_store=checkpoint_store,
         audit_logger=checkpoint_store,
     )
@@ -1911,12 +1920,17 @@ def eval_command(
         )
         raise typer.Exit(code=2)
 
-    benchmark = EvaluationBenchmark.default_ember_mini(str(fixture_path)).model_copy(
-        update={"min_precision": min_precision, "min_recall": min_recall}
-    )
+    if "angularjs" in str(fixture_path).lower():
+        benchmark = EvaluationBenchmark.default_angularjs_mini(str(fixture_path)).model_copy(
+            update={"min_precision": min_precision, "min_recall": min_recall}
+        )
+    else:
+        benchmark = EvaluationBenchmark.default_ember_mini(str(fixture_path)).model_copy(
+            update={"min_precision": min_precision, "min_recall": min_recall}
+        )
     inventory_service = InventoryService(
         filesystem=SafeFilesystemInspector(),
-        frameworks=FrameworkAdapterRegistry((EmberClassicAdapter(), AngularAdapter())),
+        frameworks=_create_framework_registry(),
     )
     eval_service = EvaluationService(inventory_service=inventory_service)
     result = eval_service.run_benchmark(benchmark, fixture_path=fixture_path)

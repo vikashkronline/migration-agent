@@ -194,4 +194,26 @@ offline verification of component discovery and transformation accuracy:
    production component detection accuracy.
 3. Benchmarks execute 100% offline without live API keys or external network dependencies, ensuring reproducible CI/CD gates.
 
+## Phase 7 — Extensibility & Second Reference Migration Pair
+
+### Framework Adapter Capability Negotiation (ADR-3)
+
+1. **Protocol-Driven Capabilities**: By declaring typed capabilities (`FrameworkCapabilities`) with granular flags
+   (`supports_inventory`, `supports_validation`, `supports_source_transformation`, `supports_target_transformation`)
+   and supported profile tuples, the framework registry can negotiate end-to-end compatibility (`negotiate_pair`)
+   without core services needing framework-specific branching.
+2. **Dynamic Migration Pair Negotiation**: `FrameworkAdapterRegistry.negotiate_pair(source, target)` validates that
+   the source adapter supports source extraction, supports targeting the desired target framework, and that the target
+   adapter supports target rendering and validation commands. This enables plug-and-play addition of new frameworks.
+3. **Decoupled Transformation Core**: Refactoring `TransformationService` to discover component bundles dynamically
+   via `extractor.discover_components(root)` and render target components generically removed hardcoded legacy paths
+   from core application logic, ensuring zero framework conditionals.
+4. **Second Reference Pair Reusability**: Introducing `AngularJsDirectiveAdapter` and `AngularJsDirectiveExtractor`
+   proved that the existing target renderer (`AngularStandaloneComponentRenderer`) can be shared across multiple distinct
+   legacy source frameworks, extracting to a common `IntermediateComponent` representation while enforcing Angular 17+
+   standards (standalone, OnPush, signals, modern control flow, Bootstrap 5).
+5. **Contract Testing**: A parametrized test suite (`test_framework_adapter_contract.py`) enforces that any new adapter
+   conforms to protocol methods, capability invariants, non-empty commands, and extraction/rendering boundaries.
+
+
 

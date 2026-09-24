@@ -56,6 +56,30 @@ class EvaluationBenchmark(BaseModel):
             min_recall=0.8,
         )
 
+    @classmethod
+    def default_angularjs_mini(
+        cls, fixture_path: str = "tests/fixtures/angularjs-directive-mini"
+    ) -> "EvaluationBenchmark":
+        """Pre-configured ground-truth benchmark for the AngularJS directive mini fixture."""
+        return cls(
+            benchmark_id="bm-angularjs-directive-mini",
+            name="AngularJS Directive Mini Benchmark",
+            description=(
+                "Evaluates component extraction and transformation accuracy on AngularJS "
+                "directive fixture."
+            ),
+            target_fixture=fixture_path,
+            expected_components=("user-badge",),
+            expected_files=(
+                "src/app/components/user-badge/user-badge.component.ts",
+                "src/app/components/user-badge/user-badge.component.html",
+                "src/app/components/user-badge/user-badge.component.scss",
+                "src/app/components/user-badge/user-badge.component.spec.ts",
+            ),
+            min_precision=0.8,
+            min_recall=0.8,
+        )
+
 
 class EvaluationResult(BaseModel):
     """Immutable outcome of executing an evaluation benchmark."""

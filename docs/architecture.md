@@ -169,4 +169,29 @@ Phase 6 introduces crash-resilient operational state machines, deterministic aud
    - `agent run resume <run_id>`: Recovers and continues interrupted runs from the latest valid checkpoint.
    - `agent eval [fixture_path]`: Runs repeatable offline evaluation benchmark against synthetic fixtures.
 
+## Extensibility & Second Reference Migration Pair (Phase 7)
+
+Phase 7 introduces dynamic capability negotiation and demonstrates cross-framework extensibility without core refactoring (**ADR-3**):
+
+1. **Framework Adapter Capability Negotiation (`FrameworkCapability`, `FrameworkCapabilities`, `NegotiationResult`)**:
+   - Adapters explicitly declare typed capabilities: `INVENTORY`, `VALIDATION`, `SOURCE_TRANSFORMATION`, `TARGET_TRANSFORMATION`.
+   - Adapters declare supported validation profiles (`LINT`, `TYPECHECK`, `TEST`, `BUILD`) and supported target framework identifiers (`supported_target_frameworks`).
+   - `FrameworkAdapterRegistry.negotiate_pair(source_id, target_id)` negotiates end-to-end migration compatibility dynamically without hardcoded framework conditionals.
+   - `get_supported_pairs()` enumerates valid source-to-target migration paths across all registered adapters.
+
+2. **Second Reference Migration Pair: AngularJS Directive $\to$ Angular Standalone**:
+   - **Source Adapter (`AngularJsDirectiveAdapter`)**: Detects AngularJS project evidence (`angular` in manifests, `.directive.js`, `ng-` template directives), provides allowlisted test validation commands, and declares source transformation capabilities targeting `angular`.
+   - **Source Extractor (`AngularJsDirectiveExtractor`)**: Discovers directive files (`discover_components`), extracts isolate scope bindings (`@`, `=`, `&`, `<`) into typed inputs, extracts controller/link state properties into reactive state, and maps action methods.
+   - **Target Renderer (`AngularStandaloneComponentRenderer`)**: Reused directly for AngularJS transformations, producing modern standalone TypeScript (`standalone: true`, `ChangeDetectionStrategy.OnPush`, signals `signal()`, inputs `input()`), modern templates (`@if` control flow, Bootstrap 5 utilities), component-scoped SCSS, and Jasmine/Jest `TestBed` specs.
+
+3. **Core Transformation Decoupling (`TransformationService`)**:
+   - Component discovery delegates to `extractor.discover_components(root)` rather than hardcoding repository file paths.
+   - Dynamic negotiation: `TransformationService` can be initialized with `FrameworkAdapterRegistry` and `FilesystemInspectorPort` to dynamically negotiate extractors and renderers for any detected framework pair.
+   - Core application services (`TransformationService`, `ValidationService`, `PlanningService`, `AnalysisService`, `EvaluationService`) remain 100% free of framework-specific `if/else` checks.
+
+4. **Reusable Adapter Contract Tests (`test_framework_adapter_contract.py`)**:
+   - Parameterized contract test suite running across all adapters (`EmberClassicAdapter`, `AngularJsDirectiveAdapter`, `AngularAdapter`).
+   - Verifies protocol adherence, capability consistency, empty repository handling, validation command profiles, and transformation extractor/renderer boundaries.
+
+
 

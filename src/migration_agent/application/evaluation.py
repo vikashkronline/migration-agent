@@ -60,19 +60,26 @@ class EvaluationService:
             inventory = self.inventory_service.inventory(target_dir)
             for f in inventory.files:
                 if (
-                    "components/" in f.path
-                    and not f.path.startswith("tests/")
-                    and not f.path.endswith(("-test.js", "-test.ts"))
+                    not f.path.startswith("tests/")
+                    and not f.path.endswith(("-test.js", "-test.ts", ".spec.js", ".spec.ts"))
                     and (f.path.endswith(".js") or f.path.endswith(".ts"))
                 ):
-                    comp_name = Path(f.path).stem
-                    detected.add(comp_name)
+                    if "components/" in f.path:
+                        detected.add(Path(f.path).stem)
+                    elif ".directive." in f.path or f.path.endswith(".directive.js"):
+                        detected.add(
+                            Path(f.path)
+                            .name.replace(".directive.js", "")
+                            .replace(".directive.ts", "")
+                        )
         else:
             # Fallback direct filesystem discovery for minimal tests
             comp_dir = target_dir / "app" / "components"
             if comp_dir.exists():
                 for p in comp_dir.glob("*.js"):
                     detected.add(p.stem)
+            for p in target_dir.rglob("*.directive.js"):
+                detected.add(p.name.replace(".directive.js", ""))
 
         # Step 2: Calculate evaluation metrics against benchmark ground truth
         expected = set(benchmark.expected_components)

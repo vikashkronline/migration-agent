@@ -1,12 +1,18 @@
-"""Small evidence-based framework detection adapters."""
+"""Small evidence-based framework detection adapters with capability declarations."""
 
 import json
 import re
 from collections.abc import Mapping
 from typing import cast
 
+from migration_agent.adapters.transforms import (
+    AngularJsDirectiveExtractor,
+    AngularStandaloneComponentRenderer,
+    EmberClassicComponentExtractor,
+)
 from migration_agent.domain import (
     FileCategory,
+    FrameworkCapabilities,
     FrameworkEvidence,
     FrameworkFingerprint,
     InspectedTextFile,
@@ -14,8 +20,14 @@ from migration_agent.domain import (
     ValidationCommand,
     ValidationProfile,
 )
+from migration_agent.ports import (
+    ComponentExtractorPort,
+    ComponentRendererPort,
+)
 
 _ANGULAR_STANDALONE_PATTERN = re.compile(r"\bstandalone\s*:\s*true\b")
+_ANGULARJS_DIRECTIVE_PATTERN = re.compile(r"\.directive\(\s*['\"][a-zA-Z0-9_-]+['\"]")
+_ANGULARJS_BINDINGS_PATTERN = re.compile(r"\bng-(?:click|if|model|repeat|show|hide)\b")
 
 
 def _manifest_dependencies(file: InspectedTextFile) -> Mapping[str, object]:
@@ -62,6 +74,17 @@ class EmberClassicAdapter:
     @property
     def framework_id(self) -> str:
         return "ember-classic"
+
+    @property
+    def capabilities(self) -> FrameworkCapabilities:
+        return FrameworkCapabilities(
+            supports_inventory=True,
+            supports_validation=True,
+            supports_source_transformation=True,
+            supports_target_transformation=False,
+            supported_validation_profiles=(ValidationProfile.TEST,),
+            supported_target_frameworks=("angular",),
+        )
 
     def detect(self, snapshot: RepositorySnapshot) -> FrameworkFingerprint | None:
         evidence: list[FrameworkEvidence] = []
@@ -147,6 +170,110 @@ class EmberClassicAdapter:
             )
         return ()
 
+    def get_extractor(self) -> ComponentExtractorPort | None:
+        return EmberClassicComponentExtractor()
+
+    def get_renderer(self) -> ComponentRendererPort | None:
+        return None
+
+
+class AngularJsDirectiveAdapter:
+    """Detect evidence consistent with an AngularJS directive project layout."""
+
+    @property
+    def framework_id(self) -> str:
+        return "angularjs-directive"
+
+    @property
+    def capabilities(self) -> FrameworkCapabilities:
+        return FrameworkCapabilities(
+            supports_inventory=True,
+            supports_validation=True,
+            supports_source_transformation=True,
+            supports_target_transformation=False,
+            supported_validation_profiles=(ValidationProfile.TEST,),
+            supported_target_frameworks=("angular",),
+        )
+
+    def detect(self, snapshot: RepositorySnapshot) -> FrameworkFingerprint | None:
+        evidence: list[FrameworkEvidence] = []
+        manifests = [
+            file
+            for file in snapshot.files
+            if file.category is FileCategory.MANIFEST and file.path.endswith("package.json")
+        ]
+        for manifest in manifests:
+            dependencies = _manifest_dependencies(manifest)
+            if "angular" in dependencies:
+                evidence.append(
+                    FrameworkEvidence(
+                        path=manifest.path,
+                        kind="manifest_dependency",
+                        description="Declares AngularJS 'angular' dependency.",
+                        weight=0.55,
+                    )
+                )
+                break
+
+        directive_file = next(
+            (
+                file
+                for file in snapshot.files
+                if (file.path.endswith(".directive.js") or file.path.endswith(".directive.ts"))
+                or (".directive" in file.path and not file.path.endswith(".spec.js"))
+                or _ANGULARJS_DIRECTIVE_PATTERN.search(file.content)
+            ),
+            None,
+        )
+        if directive_file is not None:
+            evidence.append(
+                FrameworkEvidence(
+                    path=directive_file.path,
+                    kind="directive_declaration",
+                    description="Contains AngularJS directive declaration.",
+                    weight=0.3,
+                )
+            )
+
+        template_file = next(
+            (
+                file
+                for file in snapshot.files
+                if file.path.endswith(".template.html")
+                or _ANGULARJS_BINDINGS_PATTERN.search(file.content)
+            ),
+            None,
+        )
+        if template_file is not None:
+            evidence.append(
+                FrameworkEvidence(
+                    path=template_file.path,
+                    kind="directive_template",
+                    description="Contains AngularJS template with ng- directives.",
+                    weight=0.2,
+                )
+            )
+
+        return _fingerprint(self.framework_id, evidence)
+
+    def get_validation_commands(self, profile: ValidationProfile) -> tuple[ValidationCommand, ...]:
+        """Return allowlisted validation commands for AngularJS Directive."""
+        if profile == ValidationProfile.TEST:
+            return (
+                ValidationCommand(
+                    executable="npm",
+                    args=("test",),
+                    profile=ValidationProfile.TEST,
+                ),
+            )
+        return ()
+
+    def get_extractor(self) -> ComponentExtractorPort | None:
+        return AngularJsDirectiveExtractor()
+
+    def get_renderer(self) -> ComponentRendererPort | None:
+        return None
+
 
 class AngularAdapter:
     """Detect evidence consistent with an Angular project."""
@@ -154,6 +281,22 @@ class AngularAdapter:
     @property
     def framework_id(self) -> str:
         return "angular"
+
+    @property
+    def capabilities(self) -> FrameworkCapabilities:
+        return FrameworkCapabilities(
+            supports_inventory=True,
+            supports_validation=True,
+            supports_source_transformation=False,
+            supports_target_transformation=True,
+            supported_validation_profiles=(
+                ValidationProfile.LINT,
+                ValidationProfile.TYPECHECK,
+                ValidationProfile.TEST,
+                ValidationProfile.BUILD,
+            ),
+            supported_target_frameworks=(),
+        )
 
     def detect(self, snapshot: RepositorySnapshot) -> FrameworkFingerprint | None:
         evidence: list[FrameworkEvidence] = []
@@ -243,3 +386,9 @@ class AngularAdapter:
                 ),
             )
         return ()
+
+    def get_extractor(self) -> ComponentExtractorPort | None:
+        return None
+
+    def get_renderer(self) -> ComponentRendererPort | None:
+        return AngularStandaloneComponentRenderer()

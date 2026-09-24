@@ -28,6 +28,12 @@ from migration_agent.domain.evaluations import (
     EvaluationMetric,
     EvaluationResult,
 )
+from migration_agent.domain.frameworks import (
+    FrameworkCapabilities,
+    FrameworkCapability,
+    NegotiationResult,
+    SourceComponentBundle,
+)
 from migration_agent.domain.inventory import (
     Dependency,
     DependencyScope,
@@ -93,6 +99,8 @@ __all__ = [
     "FileOperation",
     "FindingCategory",
     "FindingSeverity",
+    "FrameworkCapabilities",
+    "FrameworkCapability",
     "FrameworkEvidence",
     "FrameworkFingerprint",
     "InspectedTextFile",
@@ -102,6 +110,7 @@ __all__ = [
     "MigrationRequest",
     "MigrationRunReport",
     "MigrationStep",
+    "NegotiationResult",
     "PackageBoundary",
     "PlanStatus",
     "ProjectInventory",
@@ -112,6 +121,7 @@ __all__ = [
     "RunRecord",
     "RunStatus",
     "RunSummary",
+    "SourceComponentBundle",
     "StepRisk",
     "ValidationCommand",
     "ValidationProfile",
