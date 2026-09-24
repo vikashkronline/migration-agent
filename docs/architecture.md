@@ -141,3 +141,32 @@ Phase 5 introduces allowlisted validation and the Invariant 26 bounded self-repa
    - Compiles `MigrationRunReport` summarizing inventory, plan, applied changes, validation checks, repair history, and overall status (`SUCCESS`, `FAILED`, `ABORTED`).
    - Persists reports canonically in SQLite `run_reports` table, generates machine-readable JSON and readable Markdown tables, and logs `RUN_REPORT` audit events.
 
+## Resumable Checkpoints, Audit Journal & Evaluations (Phase 6)
+
+Phase 6 introduces crash-resilient operational state machines, deterministic audit logging, and repeatable offline evaluations:
+
+1. **Resumable State Machine (`ResumableExecutionService`)**:
+   - `RunRecord` persisted in SQLite `runs` table tracks lifecycle states (`INITIALIZED`, `STAGED`, `VALIDATING`, `REPAIRING`, `COMPLETED`, `FAILED`, `ABORTED`).
+   - **Crash Recovery**: Resuming an interrupted run from `STAGED` or subsequent states verifies the intact staging workspace and skips staging materialization and component extraction, proceeding directly to validation.
+   - **Budget Preservation Across Restarts**: When resuming during an interrupted repair loop, prior `REPAIR_ATTEMPT` checkpoints in SQLite are counted to compute the exact remaining attempt budget (`max_budget - prior_attempts`), preserving Invariant 26 guarantees.
+   - **Idempotency on Completion**: Resuming an already `COMPLETED` run safely returns the terminal `MigrationRunReport` without re-executing steps.
+
+2. **Deterministic Audit Redaction & Journal (`RedactionPolicy`, `audit.jsonl`)**:
+   - `RedactionPolicy` recursively sanitizes dictionary keys matching sensitive substrings (`KEY`, `SECRET`, `TOKEN`, `PASSWORD`, `CREDENTIAL`, `AUTH`, `OPENAI`, `GEMINI`) and redacts inline token strings (`sk-*`, `bearer *`, `ghp_*`).
+   - Payloads exceeding 512 bytes are digested with SHA-256 and truncated with size annotations to prevent log bloat.
+   - Dual storage: Persisted canonically to SQLite `audit_events` and append-only mirrored to `audit.jsonl`.
+   - **Chronological Verification (`verify_audit_log`)**: Uses physical database insertion order (`rowid`) rather than client timestamps to detect timestamp tampering or clock skew.
+
+3. **Repeatable Offline Evaluation Harness (`EvaluationService`)**:
+   - Computes precision, recall, and F1 scores against synthetic ground-truth benchmarks (`EvaluationBenchmark`, `EvaluationMetric`, `EvaluationResult`).
+   - Filters out integration test fixtures (e.g. `tests/` directories and `*-test.js`) from production component discovery metrics.
+   - Runs 100% offline without live API keys or external network dependencies.
+
+4. **CLI Surface**:
+   - `agent run [path] --plan <plan_id>`: Executes full migration with default-group dispatch.
+   - `agent run list`: Lists all recorded migration runs from the local SQLite state store.
+   - `agent run show <run_id>`: Displays run details, checkpoints count, and report status.
+   - `agent run resume <run_id>`: Recovers and continues interrupted runs from the latest valid checkpoint.
+   - `agent eval [fixture_path]`: Runs repeatable offline evaluation benchmark against synthetic fixtures.
+
+

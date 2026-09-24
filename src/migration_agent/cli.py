@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
+from typer.core import TyperGroup
 
 from migration_agent.adapters import (
     AnalysisReportWriter,
@@ -30,9 +31,11 @@ from migration_agent.adapters import (
 from migration_agent.application import (
     AnalysisService,
     BoundedRepairService,
+    EvaluationService,
     InventoryService,
     PlanningService,
     ReportService,
+    ResumableExecutionService,
     RuleBasedPlanValidator,
     TransformationService,
     ValidationService,
@@ -43,9 +46,9 @@ from migration_agent.domain import (
     ApplyStatus,
     AssuranceLevel,
     ChangeSet,
+    EvaluationBenchmark,
     PlanStatus,
     ProjectInventory,
-    RepairAttempt,
     RunStatus,
     ValidationCommand,
     ValidationProfile,
@@ -72,6 +75,24 @@ plan_app = typer.Typer(
     pretty_exceptions_enable=False,
 )
 app.add_typer(plan_app, name="plan")
+
+
+class DefaultGroup(TyperGroup):
+    """Custom TyperGroup enabling backward-compatible invocation of default 'start' command."""
+
+    def parse_args(self, ctx: object, args: list[str]) -> list[str]:
+        if args and args[0] not in self.commands and not args[0].startswith("-"):
+            args = ["start", *list(args)]
+        return super().parse_args(ctx, args)  # type: ignore[arg-type]
+
+
+run_app = typer.Typer(
+    cls=DefaultGroup,
+    help="Manage, inspect, execute, and resume migration runs.",
+    no_args_is_help=True,
+    pretty_exceptions_enable=False,
+)
+app.add_typer(run_app, name="run")
 
 _MINIMUM_PYTHON = (3, 12)
 _RUNTIME_DISTRIBUTIONS = (
@@ -850,6 +871,32 @@ def _create_transformation_service(
     )
 
 
+def _create_execution_service(
+    checkpoint_store: SqliteCheckpointStore,
+    runner: CommandRunnerPort,
+    max_repairs: int = 3,
+) -> ResumableExecutionService:
+    trans_service = _create_transformation_service(checkpoint_store)
+    val_service = ValidationService(command_runner=runner, audit_logger=checkpoint_store)
+    repair_service = BoundedRepairService(
+        command_runner=runner,
+        workspace_adapter=LocalWorkspaceAdapter(),
+        validation_service=val_service,
+        audit_logger=checkpoint_store,
+        checkpoint_store=checkpoint_store,
+        max_budget=max_repairs,
+    )
+    report_service = ReportService(checkpoint_store=checkpoint_store, audit_logger=checkpoint_store)
+    return ResumableExecutionService(
+        checkpoint_store=checkpoint_store,
+        transformation_service=trans_service,
+        validation_service=val_service,
+        repair_service=repair_service,
+        report_service=report_service,
+        audit_logger=checkpoint_store,
+    )
+
+
 @app.command("preview")
 def preview_command(
     path: Annotated[
@@ -1385,8 +1432,8 @@ def validate_command(
         raise typer.Exit(code=2)
 
 
-@app.command("run")
-def run_command(
+@run_app.command("start", hidden=True)
+def run_start_command(
     path: Annotated[
         Path,
         typer.Argument(
@@ -1509,25 +1556,257 @@ def run_command(
         )
         raise typer.Exit(code=2)
 
-    run_id = f"run-{uuid.uuid4().hex[:8]}"
-    trans_service = _create_transformation_service(checkpoint_store)
+    angular_adapter = AngularAdapter()
+    commands: list[ValidationCommand] = []
+    for p in (
+        ValidationProfile.LINT,
+        ValidationProfile.TYPECHECK,
+        ValidationProfile.TEST,
+        ValidationProfile.BUILD,
+    ):
+        commands.extend(angular_adapter.get_validation_commands(p))
+
+    runner: CommandRunnerPort
+    if fake_runner:
+        runner = FakeCommandRunner(
+            default_status=ValidationStatus.FAILED if fail_validation else ValidationStatus.PASSED,
+            default_exit_code=1 if fail_validation else 0,
+            default_output=(
+                "Simulated failure diagnostic: syntax error in component"
+                if fail_validation
+                else "All checks passed."
+            ),
+            diagnostics=("syntax error in component",) if fail_validation else (),
+        )
+    else:
+        runner = SubprocessCommandRunner()
+
+    execution_service = _create_execution_service(
+        checkpoint_store=checkpoint_store,
+        runner=runner,
+        max_repairs=max_repairs,
+    )
+
+    report_output_dir = output_dir or (effective_state_dir / "reports")
 
     try:
-        staging_dir, initial_changeset = trans_service.stage(
-            staging_root=effective_staging_root,
-            run_id=run_id,
+        run_record, report = execution_service.start_run(
             source_root=path,
             plan=plan,
+            staging_root=effective_staging_root,
+            commands=commands,
+            auto_repair=auto_repair,
+            max_repairs=max_repairs,
+            output_dir=report_output_dir,
+            actor=actor,
         )
     except Exception as err:
         typer.echo(
             json.dumps(
-                {"error": f"Staging failed: {err}", "status": "error"},
+                {"error": f"Run execution failed: {err}", "status": "error"},
                 separators=(",", ":"),
             ),
             err=True,
         )
         raise typer.Exit(code=2) from err
+
+    json_report_path = report_output_dir / f"run_report_{report.run_id}.json"
+    md_report_path = report_output_dir / f"run_report_{report.run_id}.md"
+
+    summary_payload = {
+        "json_report_path": str(json_report_path),
+        "md_report_path": str(md_report_path),
+        "plan_id": plan.plan_id,
+        "repair_attempts_count": len(report.repair_attempts),
+        "run_id": run_record.run_id,
+        "staging_path": run_record.staging_root or "",
+        "status": report.status.value,
+        "validation_checks_count": len(report.validation_results),
+    }
+
+    if report.status == RunStatus.SUCCESS:
+        typer.echo(json.dumps(summary_payload, separators=(",", ":"), sort_keys=True))
+    else:
+        typer.echo(json.dumps(summary_payload, separators=(",", ":"), sort_keys=True), err=True)
+        raise typer.Exit(code=2)
+
+
+@run_app.command("list")
+def run_list_command(
+    state_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--state-dir",
+            help="Custom directory for SQLite checkpoints and audit log.",
+        ),
+    ] = None,
+) -> None:
+    """List recorded migration runs."""
+    settings = Settings()
+    effective_state_dir = settings.resolve_state_dir(state_dir)
+    checkpoint_store = SqliteCheckpointStore(effective_state_dir)
+
+    records = checkpoint_store.list_run_records()
+    payload = [
+        {
+            "applied_changeset_id": r.applied_changeset_id,
+            "created_at": r.created_at.isoformat(),
+            "current_step_id": r.current_step_id,
+            "plan_id": r.plan_id,
+            "run_id": r.run_id,
+            "source_root": r.source_root,
+            "staging_root": r.staging_root,
+            "status": r.status.value,
+            "updated_at": r.updated_at.isoformat(),
+        }
+        for r in records
+    ]
+    typer.echo(json.dumps(payload, separators=(",", ":"), sort_keys=True))
+
+
+@run_app.command("show")
+def run_show_command(
+    run_id: Annotated[
+        str,
+        typer.Argument(help="Run ID of the migration run to inspect."),
+    ],
+    state_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--state-dir",
+            help="Custom directory for SQLite checkpoints and audit log.",
+        ),
+    ] = None,
+) -> None:
+    """Display details and state transitions for a specific migration run."""
+    settings = Settings()
+    effective_state_dir = settings.resolve_state_dir(state_dir)
+    checkpoint_store = SqliteCheckpointStore(effective_state_dir)
+
+    record = checkpoint_store.get_run_record(run_id)
+    if record is None:
+        typer.echo(
+            json.dumps(
+                {"error": f"Run '{run_id}' not found.", "status": "error"}, separators=(",", ":")
+            ),
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    report = checkpoint_store.get_run_report(run_id)
+    checkpoints = checkpoint_store.list_checkpoints(run_id)
+
+    payload = {
+        "applied_changeset_id": record.applied_changeset_id,
+        "checkpoints_count": len(checkpoints),
+        "created_at": record.created_at.isoformat(),
+        "current_step_id": record.current_step_id,
+        "plan_id": record.plan_id,
+        "report_status": report.status.value if report else None,
+        "run_id": record.run_id,
+        "source_root": record.source_root,
+        "staging_root": record.staging_root,
+        "status": record.status.value,
+        "updated_at": record.updated_at.isoformat(),
+    }
+    typer.echo(json.dumps(payload, separators=(",", ":"), sort_keys=True))
+
+
+@run_app.command("resume")
+def run_resume_command(
+    run_id: Annotated[
+        str,
+        typer.Argument(help="Run ID of the interrupted run to resume."),
+    ],
+    auto_repair: Annotated[
+        bool,
+        typer.Option(
+            "--auto-repair",
+            help="Enable bounded self-repair loop on validation failure.",
+        ),
+    ] = True,
+    max_repairs: Annotated[
+        int,
+        typer.Option(
+            "--max-repairs",
+            help="Maximum repair attempts budget.",
+        ),
+    ] = 3,
+    output_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--output",
+            "-o",
+            file_okay=False,
+            help="Directory to save run reports.",
+        ),
+    ] = None,
+    actor: Annotated[
+        str,
+        typer.Option(
+            "--actor",
+            "-a",
+            help="Actor executing the migration run.",
+        ),
+    ] = "operator",
+    fake_runner: Annotated[
+        bool,
+        typer.Option(
+            "--fake-runner",
+            help="Use deterministic FakeCommandRunner for offline verification.",
+        ),
+    ] = False,
+    fail_validation: Annotated[
+        bool,
+        typer.Option(
+            "--fail-validation",
+            help="Simulate validation failure in fake runner.",
+        ),
+    ] = False,
+    staging_root: Annotated[
+        Path | None,
+        typer.Option(
+            "--staging-root",
+            help="Custom root directory for staging workspaces.",
+        ),
+    ] = None,
+    state_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--state-dir",
+            help="Custom directory for SQLite checkpoints and audit log.",
+        ),
+    ] = None,
+) -> None:
+    """Resume an interrupted migration run from its latest operational checkpoint."""
+    settings = Settings()
+    effective_state_dir = settings.resolve_state_dir(state_dir)
+    effective_staging_root = settings.resolve_staging_root(staging_root)
+    checkpoint_store = SqliteCheckpointStore(effective_state_dir)
+
+    record = checkpoint_store.get_run_record(run_id)
+    if record is None:
+        typer.echo(
+            json.dumps(
+                {"error": f"Run '{run_id}' not found.", "status": "error"}, separators=(",", ":")
+            ),
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    plan = checkpoint_store.get_plan(record.plan_id)
+    if plan is None:
+        typer.echo(
+            json.dumps(
+                {
+                    "error": f"Plan '{record.plan_id}' associated with run '{run_id}' not found.",
+                    "status": "error",
+                },
+                separators=(",", ":"),
+            ),
+            err=True,
+        )
+        raise typer.Exit(code=2)
 
     angular_adapter = AngularAdapter()
     commands: list[ValidationCommand] = []
@@ -1554,57 +1833,44 @@ def run_command(
     else:
         runner = SubprocessCommandRunner()
 
-    val_service = ValidationService(command_runner=runner, audit_logger=checkpoint_store)
-    val_results = val_service.validate(staging_dir, commands, run_id=run_id)
-
-    repair_attempts: list[RepairAttempt] = []
-    latest_changeset = initial_changeset
-    step_id = plan.steps[0].step_id if plan.steps else "step-001"
-
-    if any(r.status != ValidationStatus.PASSED for r in val_results) and auto_repair:
-        repair_service = BoundedRepairService(
-            command_runner=runner,
-            workspace_adapter=LocalWorkspaceAdapter(),
-            validation_service=val_service,
-            audit_logger=checkpoint_store,
-            checkpoint_store=checkpoint_store,
-            max_budget=max_repairs,
-        )
-        _, latest_changeset, repair_attempts, val_results = repair_service.run_repair_loop(
-            staging_dir=staging_dir,
-            initial_changeset=initial_changeset,
-            plan=plan,
-            step_id=step_id,
-            commands=commands,
-            initial_results=val_results,
-            max_attempts=max_repairs,
-        )
-
-    report_service = ReportService(checkpoint_store=checkpoint_store, audit_logger=checkpoint_store)
-    report = report_service.compile_report(
-        run_id=run_id,
-        plan_id=plan.plan_id,
-        source_root=str(path),
-        staging_root=str(staging_dir),
-        validation_results=val_results,
-        repair_attempts=repair_attempts,
-        applied_changeset=latest_changeset
-        if all(r.status == ValidationStatus.PASSED for r in val_results)
-        else None,
+    execution_service = _create_execution_service(
+        checkpoint_store=checkpoint_store,
+        runner=runner,
+        max_repairs=max_repairs,
     )
 
     report_output_dir = output_dir or (effective_state_dir / "reports")
-    json_report_path, md_report_path = report_service.save_report(
-        report, output_dir=report_output_dir
-    )
+
+    try:
+        updated_record, report = execution_service.resume_run(
+            run_id=run_id,
+            staging_root=effective_staging_root,
+            commands=commands,
+            auto_repair=auto_repair,
+            max_repairs=max_repairs,
+            output_dir=report_output_dir,
+            actor=actor,
+        )
+    except Exception as err:
+        typer.echo(
+            json.dumps(
+                {"error": f"Resume failed: {err}", "status": "error"},
+                separators=(",", ":"),
+            ),
+            err=True,
+        )
+        raise typer.Exit(code=2) from err
+
+    json_report_path = report_output_dir / f"run_report_{report.run_id}.json"
+    md_report_path = report_output_dir / f"run_report_{report.run_id}.md"
 
     summary_payload = {
         "json_report_path": str(json_report_path),
         "md_report_path": str(md_report_path),
         "plan_id": plan.plan_id,
         "repair_attempts_count": len(report.repair_attempts),
-        "run_id": run_id,
-        "staging_path": str(staging_dir),
+        "run_id": updated_record.run_id,
+        "staging_path": updated_record.staging_root or "",
         "status": report.status.value,
         "validation_checks_count": len(report.validation_results),
     }
@@ -1613,6 +1879,70 @@ def run_command(
         typer.echo(json.dumps(summary_payload, separators=(",", ":"), sort_keys=True))
     else:
         typer.echo(json.dumps(summary_payload, separators=(",", ":"), sort_keys=True), err=True)
+        raise typer.Exit(code=2)
+
+
+@app.command("eval")
+def eval_command(
+    path: Annotated[
+        Path | None,
+        typer.Argument(
+            help="Target fixture path to evaluate. Defaults to tests/fixtures/ember-classic-mini.",
+        ),
+    ] = None,
+    min_precision: Annotated[
+        float,
+        typer.Option("--min-precision", help="Minimum required precision score."),
+    ] = 0.8,
+    min_recall: Annotated[
+        float,
+        typer.Option("--min-recall", help="Minimum required recall score."),
+    ] = 0.8,
+) -> None:
+    """Execute offline evaluation benchmark against synthetic fixtures."""
+    fixture_path = path or (Path("tests") / "fixtures" / "ember-classic-mini")
+    if not fixture_path.exists():
+        typer.echo(
+            json.dumps(
+                {"error": f"Fixture path '{fixture_path}' does not exist.", "status": "error"},
+                separators=(",", ":"),
+            ),
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    benchmark = EvaluationBenchmark.default_ember_mini(str(fixture_path)).model_copy(
+        update={"min_precision": min_precision, "min_recall": min_recall}
+    )
+    inventory_service = InventoryService(
+        filesystem=SafeFilesystemInspector(),
+        frameworks=FrameworkAdapterRegistry((EmberClassicAdapter(), AngularAdapter())),
+    )
+    eval_service = EvaluationService(inventory_service=inventory_service)
+    result = eval_service.run_benchmark(benchmark, fixture_path=fixture_path)
+
+    payload = {
+        "benchmark_id": result.benchmark_id,
+        "detected_components": list(result.detected_components),
+        "metrics": {
+            "duration_ms": result.metrics.duration_ms,
+            "f1_score": result.metrics.f1_score,
+            "passed": result.metrics.passed,
+            "precision": result.metrics.precision,
+            "recall": result.metrics.recall,
+            "repair_count": result.metrics.repair_count,
+        },
+        "missed_components": list(result.missed_components),
+        "run_id": result.run_id,
+        "status": "ok" if result.metrics.passed else "failed",
+        "summary": result.summary,
+        "unexpected_components": list(result.unexpected_components),
+    }
+
+    if result.metrics.passed:
+        typer.echo(json.dumps(payload, separators=(",", ":"), sort_keys=True))
+    else:
+        typer.echo(json.dumps(payload, separators=(",", ":"), sort_keys=True), err=True)
         raise typer.Exit(code=2)
 
 

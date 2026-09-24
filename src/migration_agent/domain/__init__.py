@@ -23,6 +23,11 @@ from migration_agent.domain.changeset import (
     compute_file_sha256,
     compute_worktree_fingerprint,
 )
+from migration_agent.domain.evaluations import (
+    EvaluationBenchmark,
+    EvaluationMetric,
+    EvaluationResult,
+)
 from migration_agent.domain.inventory import (
     Dependency,
     DependencyScope,
@@ -49,6 +54,12 @@ from migration_agent.domain.planning import (
     compute_plan_digest,
     verify_approval,
 )
+from migration_agent.domain.redaction import RedactionPolicy
+from migration_agent.domain.run_state import (
+    ExecutionStep,
+    RunRecord,
+    RunSummary,
+)
 from migration_agent.domain.validation import (
     MigrationRunReport,
     RepairAttempt,
@@ -69,9 +80,13 @@ __all__ = [
     "ChangeSet",
     "Dependency",
     "DependencyScope",
+    "EvaluationBenchmark",
+    "EvaluationMetric",
+    "EvaluationResult",
     "EvidenceReference",
     "EvidenceStatus",
     "ExclusionSummary",
+    "ExecutionStep",
     "FileCategory",
     "FileChange",
     "FileMode",
@@ -90,10 +105,13 @@ __all__ = [
     "PackageBoundary",
     "PlanStatus",
     "ProjectInventory",
+    "RedactionPolicy",
     "RepairAttempt",
     "RepositoryDescriptor",
     "RepositorySnapshot",
+    "RunRecord",
     "RunStatus",
+    "RunSummary",
     "StepRisk",
     "ValidationCommand",
     "ValidationProfile",

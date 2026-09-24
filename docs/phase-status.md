@@ -225,8 +225,43 @@ staged the approved plan, ran all 4 validation checks (`LINT`, `TYPECHECK`, `TES
 `MigrationRunReport` stored canonically in SQLite `run_reports` and mirrored to `run_report_<run_id>.json` and `.md`,
 leaving the original repository fixture completely untouched.
 
+## Phase 6 — Complete
+
+Scope: Resumable operational state machine across process crashes via `RunRecord` in `SqliteCheckpointStore` (`runs` table),
+audit event journal mirroring append-only to `audit.jsonl` with deterministic secret redaction and SHA-256 digested truncations
+for payloads > 512 bytes via `RedactionPolicy`, chronological audit log verification (`verify_audit_log`), resumable execution
+service (`ResumableExecutionService`) skipping workspace staging on resumption when already staged and continuing self-repair
+with remaining attempt budgets, repeatable offline evaluation benchmark harness (`EvaluationService`) with ground-truth
+scoring (`EvaluationBenchmark`, `EvaluationMetric`, `EvaluationResult`) calculating precision, recall, and F1, and CLI commands
+`agent run list`, `agent run show <run_id>`, `agent run resume <run_id>`, and `agent eval [fixture_path]`.
+
+Completed on 2026-09-25 using `uv` and an isolated CPython 3.12.14 environment. The dependency lock resolved 69 packages.
+The required evidence is:
+
+```text
+uv sync --all-groups
+Resolved 69 packages; checked 68 packages.
+
+uv run pytest
+158 passed, 2 skipped in 12.33s
+
+uv run ruff check .
+All checks passed!
+
+uv run ruff format --check .
+102 files already formatted.
+
+uv run mypy src
+Success: no issues found in 45 source files.
+
+uv run migration-agent doctor
+Exit code 0; emitted schema-versioned JSON with status "ok" checking google-genai, openai-agents, pydantic, pydantic-settings, typer.
+```
+
+An evaluation run against `tests/fixtures/ember-classic-mini` via `migration-agent eval` scored 1.0 precision, 1.0 recall, 1.0 F1 score,
+and passed offline verification in 14ms without network or live API keys.
+
 ## Later phases
 
-Phases 6 through 10 have not started. No resumable checkpoints across process restarts, audit journal replay,
-or remote trace export exists.
+Phases 7 through 10 have not started. Framework adapter capability negotiation and reference migration pairs for Vue/React are deferred to Phase 7.
 

@@ -8,8 +8,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from migration_agent.domain import (
     ApprovalSignature,
     ChangeSet,
+    ExecutionStep,
     MigrationPlan,
     MigrationRunReport,
+    RunRecord,
 )
 
 
@@ -72,9 +74,33 @@ class CheckpointPort(Protocol):
     def get_run_report(self, run_id: str) -> MigrationRunReport | None:
         """Retrieve a migration run report by its run ID."""
 
+    def save_run_record(self, run: RunRecord) -> None:
+        """Persist or update a migration run state record."""
+
+    def get_run_record(self, run_id: str) -> RunRecord | None:
+        """Retrieve a migration run record by its unique run ID."""
+
+    def list_run_records(self) -> list[RunRecord]:
+        """List all recorded migration runs."""
+
+    def update_run_status(
+        self,
+        run_id: str,
+        status: ExecutionStep,
+        current_step_id: str | None = None,
+        applied_changeset_id: str | None = None,
+    ) -> None:
+        """Update the operational status and progress of a run."""
+
 
 class AuditLogPort(Protocol):
     """Boundary for recording append-only audit events."""
 
     def record_event(self, event: AuditEvent) -> None:
         """Record an audit event to the append-only audit log."""
+
+    def get_events(self, run_id: str) -> list[AuditEvent]:
+        """Retrieve all audit events associated with a run in chronological order."""
+
+    def verify_audit_log(self, run_id: str) -> bool:
+        """Verify the integrity and chronological sequence of audit events for a run."""

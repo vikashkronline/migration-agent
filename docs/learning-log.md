@@ -162,3 +162,36 @@ recording source root, staging root, plan ID, validation results across all prof
 canonically stored in SQLite (`run_reports`), mirrored to JSON and Markdown, and recorded to the append-only
 audit log (`audit.jsonl`).
 
+## Phase 6 — Resumable Checkpoints, Audit Journal & Evaluations
+
+### Resumable State Machine Across Process Crashes
+
+Persisting operational state milestones (`INITIALIZED`, `STAGED`, `VALIDATING`, `REPAIRING`, `COMPLETED`, `FAILED`)
+in SQLite enables deterministic recovery across process crashes:
+1. Resumption from `STAGED` bypasses workspace materialization and transformation extraction if the staging workspace
+   is intact on disk, proceeding directly to validation checks.
+2. Resumption during an interrupted repair loop inspects operational checkpoints to count prior repair attempts and
+   computes the remaining budget (`max_budget - prior_attempts`). This preserves Invariant 26 bounded self-repair guarantees
+   across arbitrary process crash and resume boundaries.
+3. Attempting to resume an already completed run safely returns the terminal report without repeating operations.
+
+### Deterministic Audit Redaction and Payload Digestion
+
+Audit logs must never log raw credentials or bloat indefinitely from multi-megabyte tool outputs:
+1. `RedactionPolicy` recursively sanitizes dictionary keys matching sensitive substrings (`KEY`, `SECRET`, `TOKEN`,
+   `PASSWORD`, `CREDENTIAL`, `AUTH`, `OPENAI`, `GEMINI`) and redacts inline token patterns (`sk-*`, `bearer *`, `ghp_*`).
+2. Payloads exceeding 512 bytes are hashed using SHA-256 and truncated with a digest reference, bounding audit log growth.
+3. The append-only log is dual-persisted to SQLite `audit_events` and append-only `audit.jsonl`.
+4. `verify_audit_log` inspects SQLite insertion sequence (`rowid`) rather than timestamp order, enabling the detection
+   of clock skew or retrospective event insertion.
+
+### Offline Repeatable Evaluation Harness
+
+Ground truth benchmark evaluations (`EvaluationBenchmark`, `EvaluationMetric`, `EvaluationResult`) enable repeatable,
+offline verification of component discovery and transformation accuracy:
+1. Precision, recall, and F1 scores are computed against expected components and files.
+2. Filtering out integration test fixtures (e.g., `tests/` directories and `*-test.js`) ensures metrics strictly measure
+   production component detection accuracy.
+3. Benchmarks execute 100% offline without live API keys or external network dependencies, ensuring reproducible CI/CD gates.
+
+

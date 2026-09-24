@@ -194,7 +194,10 @@ class FakeAgentRuntime(AgentRuntimePort):
         component_files = [
             f.path
             for f in inventory.files
-            if "component" in f.path.lower() and f.path.endswith((".js", ".ts"))
+            if "component" in f.path.lower()
+            and f.path.endswith((".js", ".ts"))
+            and not f.path.startswith("tests/")
+            and not f.path.endswith(("-test.js", "-test.ts"))
         ]
         template_files = [f.path for f in inventory.files if f.path.endswith((".hbs", ".html"))]
 

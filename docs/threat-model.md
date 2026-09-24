@@ -55,6 +55,11 @@ cryptographic binding.
 | Log flooding / terminal resource exhaustion | Command output is capped at `max_output_bytes` (64KB); overflow appends `... [TRUNCATED]` while full SHA-256 digest is preserved for verification. |
 | Infinite self-repair loop | Invariant 26 limits repair loop to max 3 attempts; repeated identical failures immediately terminate early without wasting budget. |
 | Scope expansion attack during repair | Invariant 26 validates candidate repair ChangeSets against approved step scope; modifying unapproved files halts loop with `DISALLOWED`. |
+| Secret disclosure in audit logs | `RedactionPolicy` recursively cleans dictionary keys matching sensitive substrings (`KEY`, `SECRET`, `TOKEN`, `PASSWORD`, `CREDENTIAL`, `AUTH`, `OPENAI`, `GEMINI`) and redacts inline token patterns before writing to SQLite and `audit.jsonl`. |
+| Unbounded log disk exhaustion | Payloads > 512 bytes are digested with SHA-256 and truncated, preserving full content digests without bloat. |
+| Retrospective audit tampering or clock skew | `verify_audit_log` uses SQLite physical insertion order (`rowid`) to guarantee strict monotonic chronological integrity. |
+| Repair budget evasion across crashes | Resumption checks prior `REPAIR_ATTEMPT` checkpoints to decrement remaining budget, preventing budget reset attacks. |
+| Stale staging workspace reuse | Resumption verifies staging directory integrity, plan approval, and applied changeset digest before skipping staging. |
 
 ## Residual risks and deferred controls
 
@@ -62,5 +67,5 @@ cryptographic binding.
   recognize every organization-specific secret convention.
 - Mode A (cryptographically verified SSH/GPG keys) currently records identity fingerprints;
   integration with native ssh-agent/gpg binaries is expanded in later phases.
-- Resumable checkpoints across process restarts and full audit journal replay are deferred to Phase 6.
+- Cross-framework adapter capability negotiation and secondary framework pairs are deferred to Phase 7.
 
