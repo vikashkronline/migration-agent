@@ -215,5 +215,47 @@ offline verification of component discovery and transformation accuracy:
 5. **Contract Testing**: A parametrized test suite (`test_framework_adapter_contract.py`) enforces that any new adapter
    conforms to protocol methods, capability invariants, non-empty commands, and extraction/rendering boundaries.
 
+## Phase 8 — Specialist Subagents Driven by Evaluation Evidence (ADR-6)
+
+### Centralized Mutation Authority & Read-Only Specialists
+1. **Subagents Are Read-Only Proposers**: All specialist subagents (`InventoryInterpreter`, `MigrationAnalyst`,
+   `PlanCritic`, `RepairDiagnostician`) operate strictly in a read-only capacity. They accept typed requests
+   and return structured Pydantic outputs, possessing zero filesystem mutation tools or subprocess execution authority.
+2. **Deterministic Aggregation**: Mutations are strictly owned by the core engine. Specialist recommendations
+   are processed through deterministic aggregator components (`DeterministicPlanCriticAggregator`,
+   `DeterministicRepairDiagnosticianAggregator`) that filter, validate, and constrain candidate modifications
+   before applying any changes.
+
+### Deterministic Plan Critic & Risk Escalation
+1. **Preserving DAG Topology**: The `PlanCritic` evaluates migration plans against architectural rules, dependencies,
+   and file sprawl. However, to eliminate non-deterministic drift, the aggregator never re-orders or deletes steps.
+2. **Fail-Closed Risk Escalation**: If the critic identifies medium or high-risk issues with a step, the aggregator
+   deterministically escalates `step.risk` to `StepRisk.HIGH` and appends structured validation warnings. This forces
+   human-in-the-loop review (`PlanStatus.NEEDS_APPROVAL`) while maintaining strict DAG integrity.
+
+### Bounded Repair Loop & Scope Enforcement (Invariant 26)
+1. **Diagnostician Integration**: When validation checks fail within `BoundedRepairService`, the `RepairDiagnostician`
+   analyzes failure diagnostics to propose root causes and candidate patches.
+2. **Invariant 26 Scope Guardrails**: `DeterministicRepairDiagnosticianAggregator` validates that the proposed patch
+   strictly falls within the approved step `allowed_scope`. If the model suggests editing outside the approved scope
+   (e.g., modifying `package.json` during a component translation), the recommendation is deterministically rejected,
+   preventing runaway multi-file edits.
+3. **Digest Linkage**: Every applied repair generates a fresh `ChangeSet` with a newly computed canonical RFC 8785 digest,
+   recording a structured `RepairAttempt` linking previous and new digests.
+
+### Global Budget Limits & Fail-Closed Behavior
+1. **Budget Enforcement**: To prevent unbounded recursion and token burn, `BudgetTracker` enforces global and per-specialist
+   limits (`max_total_turns`, `max_cost_usd`, `max_turns_per_specialist`).
+2. **Fail-Closed Fallback**: Once a budget limit is reached, `SpecialistCoordinator` halts further subagent execution,
+   records a `SPECIALIST_BUDGET_EXCEEDED` audit event, and gracefully falls back to deterministic core procedures.
+
+### Comparative Evaluation Harness
+1. **Evidence-Driven Subagent Adoption**: Specialist subagents are justified only when evidence shows they improve
+   accuracy or reduce errors without unreasonable cost.
+2. **Comparative Benchmark**: `EvaluationService.run_specialist_benchmark` compares baseline component detection and
+   transformation against specialist-assisted runs, tracking F1 scores, turn counts, cost in USD, and plan critique
+   scores to empirically validate subagent impact.
+
+
 
 

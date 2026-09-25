@@ -20,6 +20,7 @@ from migration_agent.ports.governance import (
     ProjectManifest,
     ProjectPolicy,
 )
+from migration_agent.ports.specialists import SpecialistRuntimePort
 from migration_agent.ports.transformation import (
     ComponentExtractorPort,
     ComponentRendererPort,
@@ -47,5 +48,6 @@ __all__ = [
     "PlanningRequest",
     "ProjectManifest",
     "ProjectPolicy",
+    "SpecialistRuntimePort",
     "WorkspacePort",
 ]

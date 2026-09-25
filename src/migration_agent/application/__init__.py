@@ -5,6 +5,11 @@ from migration_agent.application.evaluation import EvaluationService
 from migration_agent.application.inventory import InventoryService
 from migration_agent.application.orchestration import ResumableExecutionService
 from migration_agent.application.planning import PlanningService
+from migration_agent.application.specialists import (
+    DeterministicPlanCriticAggregator,
+    DeterministicRepairDiagnosticianAggregator,
+    SpecialistCoordinator,
+)
 from migration_agent.application.transformation import TransformationService
 from migration_agent.application.validation import (
     BoundedRepairService,
@@ -16,6 +21,8 @@ from migration_agent.application.validator import PlanValidationResult, RuleBase
 __all__ = [
     "AnalysisService",
     "BoundedRepairService",
+    "DeterministicPlanCriticAggregator",
+    "DeterministicRepairDiagnosticianAggregator",
     "EvaluationService",
     "InventoryService",
     "PlanValidationResult",
@@ -24,6 +31,7 @@ __all__ = [
     "ResumableExecutionService",
     "RuleBasedPlanValidator",
     "SnapshotFileReader",
+    "SpecialistCoordinator",
     "TransformationService",
     "ValidationService",
 ]

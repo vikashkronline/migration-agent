@@ -297,7 +297,45 @@ Smoke runs across both reference fixtures executed successfully:
 2. `tests/fixtures/angularjs-directive-mini`: `migration-agent inventory` detected `angularjs-directive` with 1.0 confidence; `migration-agent eval` achieved 1.0 precision, 1.0 recall, and 1.0 F1 score in 109ms.
 Contract tests verify that all adapters conform to the `FrameworkAdapter` protocol, capability declarations, detection thresholds, and transformation boundaries.
 
+## Phase 8 — Complete
+
+Scope: Specialist subagents driven by evaluation evidence (ADR-6).
+- Candidate specialist roles: Inventory Interpreter, Migration Analyst, Plan Critic, Repair Diagnostician.
+- Typed inter-agent request/response contracts (`SpecialistRole`, `InventoryInterpretationRequest`, `InventoryInterpretation`, `MigrationAnalystRequest`, `MigrationAnalysisOutput`, `PlanCriticRequest`, `PlanCritique`, `RepairDiagnosticianRequest`, `RepairDiagnosis`, `SpecialistEvaluationMetric`).
+- Centralized mutation authority: subagents remain strictly read-only; mutations are generated only via deterministic aggregators (`DeterministicPlanCriticAggregator`, `DeterministicRepairDiagnosticianAggregator`) and validated by the core engine.
+- Global turn and cost budgets with fail-closed enforcement (`BudgetLimit`, `BudgetTracker`, `BudgetExhaustedError`, `SpecialistCoordinator`).
+- Comparative evaluation harness measuring performance/quality with vs. without specialist subagents on reference fixtures.
+- CLI flags: `--critic / --no-critic` on `plan create`, `--with-specialists` on `eval`.
+
+Completed on 2026-09-25 using `uv` and an isolated CPython 3.12.14 environment. The required evidence is:
+
+```text
+uv sync --all-groups
+Resolved 69 packages; checked 68 packages.
+
+uv run pytest
+214 passed, 2 skipped in 17.50s
+
+uv run ruff check .
+All checks passed!
+
+uv run ruff format --check .
+116 files already formatted.
+
+uv run mypy src
+Success: no issues found in 49 source files.
+
+uv run migration-agent doctor
+Exit code 0; emitted schema-versioned JSON with status "ok" checking google-genai, openai-agents, pydantic, pydantic-settings, typer.
+```
+
+Comparative benchmark runs:
+1. `migration-agent eval tests/fixtures/ember-classic-mini --with-specialists`:
+   Baseline F1: 1.0, Specialist F1: 1.0, Plan Critic Score: 0.95, Turns: 2, Cost: $0.001, Improvement detected: True.
+2. Plan creation with critic: `migration-agent plan create tests/fixtures/ember-classic-mini --fake-runtime --critic` successfully integrated Plan Critic findings into validation warnings without mutating DAG topology.
+3. Repair loop with Diagnostician: Diagnostician invoked on validation failure, out-of-scope patches deterministically rejected per Invariant 26, in-scope patches correctly resolved failures.
+
 ## Later phases
 
-Phases 8 through 10 have not started. Specialist subagents driven by evaluation evidence are deferred to Phase 8.
+Phases 9 through 10 have not started. Full-stack discovery and polyglot dependency graphs are deferred to Phase 9.
 

@@ -193,5 +193,32 @@ Phase 7 introduces dynamic capability negotiation and demonstrates cross-framewo
    - Parameterized contract test suite running across all adapters (`EmberClassicAdapter`, `AngularJsDirectiveAdapter`, `AngularAdapter`).
    - Verifies protocol adherence, capability consistency, empty repository handling, validation command profiles, and transformation extractor/renderer boundaries.
 
+## Specialist Agents Driven by Evaluation Evidence (Phase 8)
+
+Phase 8 introduces specialized subagent personas driven by offline evaluation metrics, strictly maintaining centralized mutation authority and safety invariants (**ADR-6**):
+
+1. **Specialized Subagent Roles (`SpecialistRole`, `SpecialistRuntimePort`)**:
+   - **`Inventory Interpreter`**: Specializes in repository-level signal extraction, analyzing framework dependencies and package manifests to synthesize high-level architectural insights and migration strategies before detailed analysis.
+   - **`Migration Analyst`**: Specializes in deep AST and code inspection on eligible files, producing structured findings without cluttering inventory or planner logic.
+   - **`Plan Critic`**: Audits candidate migration plans before user review, checking for sequencing defects, missing prerequisites, and oversized file scopes (>10 files).
+   - **`Repair Diagnostician`**: Diagnoses compiler, lint, and test failure outputs during the bounded self-repair loop to isolate the root cause and provide targeted repair guidance.
+
+2. **Centralized Mutation Authority & Read-Only Safety**:
+   - Subagents possess **zero** filesystem write permissions, zero command execution authority, and zero approval signing capability.
+   - All mutations, staging operations, and command runs remain strictly centralized in core engine services (`TransformationService`, `BoundedRepairService`, `PlanningService`).
+
+3. **Global Turn & Cost Budgets (`BudgetTracker`, `BudgetLimit`)**:
+   - Global and per-role limits on turn counts (`max_total_turns`, `max_turns_per_role`), token limits (`max_total_tokens`), and dollar cost (`max_total_cost_usd`).
+   - **Fail-Closed Enforcement**: If a subagent exhausts its allocated budget, the coordinator halts specialist invocation, logs a `SPECIALIST_BUDGET_EXCEEDED` audit event, and gracefully falls back to deterministic defaults.
+
+4. **Deterministic Aggregation**:
+   - **`DeterministicPlanCriticAggregator`**: Translates plan critique into deterministic plan modifications: flags steps, elevates step risks (`StepRisk.HIGH`), and withholds approval recommendation if critical issues exist. The critic cannot delete, insert, or reorder DAG steps directly.
+   - **`DeterministicRepairDiagnosticianAggregator`**: Enforces **Invariant 26** scope boundaries. If the diagnostician recommends modifying a file outside the approved `allowed_scope`, the recommendation is deterministically rejected.
+
+5. **Comparative Evaluation Evidence (`run_specialist_benchmark`, `SpecialistEvaluationMetric`)**:
+   - Comparative benchmarking evaluates baseline accuracy against specialist-assisted workflows.
+   - Telemetry tracks precision, recall, F1 score, plan critique scores, subagent turn consumption, and estimated cost across synthetic fixtures.
+
+
 
 

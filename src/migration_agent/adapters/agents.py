@@ -14,24 +14,43 @@ from agents import (
 
 from migration_agent.adapters.schemas import (
     AgentAnalysisOutput,
+    AgentInventoryInterpretationOutput,
+    AgentPlanCritiqueOutput,
     AgentPlanningOutput,
+    AgentRepairDiagnosisOutput,
+    map_agent_critique_output_to_domain,
+    map_agent_diagnosis_output_to_domain,
+    map_agent_interpretation_output_to_domain,
     map_agent_output_to_domain,
     map_agent_plan_output_to_domain,
 )
-from migration_agent.domain import AnalysisResult, MigrationStep, ProjectInventory
+from migration_agent.domain import (
+    AnalysisResult,
+    InventoryInterpretation,
+    InventoryInterpretationRequest,
+    MigrationAnalysisOutput,
+    MigrationAnalystRequest,
+    MigrationStep,
+    PlanCriticRequest,
+    PlanCritique,
+    ProjectInventory,
+    RepairDiagnosis,
+    RepairDiagnosticianRequest,
+)
 from migration_agent.ports import (
     AgentRuntimePort,
     AnalysisRequest,
     FileReaderPort,
     PlanningRequest,
+    SpecialistRuntimePort,
 )
 
 # Remote Agents SDK trace export is disabled by default for privacy and local execution safety.
 set_tracing_disabled(True)
 
 
-class OpenAIAgentsRuntimeAdapter(AgentRuntimePort):
-    """Application-hosted OpenAI Agents SDK adapter for read-only analysis and planning."""
+class OpenAIAgentsRuntimeAdapter(AgentRuntimePort, SpecialistRuntimePort):
+    """OpenAI Agents SDK adapter for analysis, planning, and specialists."""
 
     def __init__(self) -> None:
         set_tracing_disabled(True)
@@ -121,6 +140,133 @@ class OpenAIAgentsRuntimeAdapter(AgentRuntimePort):
             raise TypeError(f"Unexpected planner agent output type: {type(raw_output)}")
 
         return map_agent_plan_output_to_domain(planning_output)
+
+    def interpret_inventory(
+        self,
+        request: InventoryInterpretationRequest,
+    ) -> InventoryInterpretation:
+        """Synthesize high-level domain insights and framework notes from repository inventory."""
+        agent = self.create_inventory_interpreter_agent(request.inventory)
+        user_prompt = (
+            f"Interpret the repository inventory for '{request.inventory.repository.name}'. "
+            "Synthesize an architectural summary, framework assessment notes, key migration risks, "
+            "and a recommended high-level migration strategy."
+        )
+        run_config = RunConfig(tracing_disabled=True)
+        run_result = Runner.run_sync(
+            agent,
+            user_prompt,
+            max_turns=5,
+            run_config=run_config,
+        )
+        raw_output = run_result.final_output
+        if isinstance(raw_output, AgentInventoryInterpretationOutput):
+            output = raw_output
+        elif isinstance(raw_output, str):
+            output = AgentInventoryInterpretationOutput.model_validate_json(raw_output)
+        elif isinstance(raw_output, dict):
+            output = AgentInventoryInterpretationOutput.model_validate(raw_output)
+        else:
+            raise TypeError(f"Unexpected interpreter output type: {type(raw_output)}")
+        return map_agent_interpretation_output_to_domain(output)
+
+    def analyze_migration(
+        self,
+        request: MigrationAnalystRequest,
+        file_reader: FileReaderPort,
+    ) -> MigrationAnalysisOutput:
+        """Perform deep code-level migration analysis against eligible repository files."""
+        analysis_req = AnalysisRequest(
+            inventory=request.inventory,
+            provider="openai",
+            model="gpt-4o",
+            max_turns=request.max_turns,
+            dry_run=True,
+        )
+        res = self.analyze(analysis_req, file_reader)
+        return MigrationAnalysisOutput(
+            summary=res.summary,
+            findings=res.findings,
+            assumptions=res.assumptions,
+            unsupported_constructs=res.unsupported_constructs,
+            questions=res.questions,
+        )
+
+    def criticize_plan(
+        self,
+        request: PlanCriticRequest,
+    ) -> PlanCritique:
+        """Audit candidate migration plan for risk, missing dependencies, and quality issues."""
+        agent = self.create_plan_critic_agent()
+        plan_summary = [
+            {
+                "step_id": s.step_id,
+                "title": s.title,
+                "dependencies": s.dependencies,
+                "expected_files": s.expected_files,
+                "risk": s.risk.value,
+            }
+            for s in request.plan.steps
+        ]
+        repo = request.inventory.repository.name
+        user_prompt = (
+            f"Audit and critique the following migration plan for '{repo}':\n"
+            f"{json.dumps(plan_summary, indent=2)}\n\n"
+            "Identify missing dependencies, sequencing flaws, and provide an overall score."
+        )
+        run_config = RunConfig(tracing_disabled=True)
+        run_result = Runner.run_sync(
+            agent,
+            user_prompt,
+            max_turns=5,
+            run_config=run_config,
+        )
+        raw_output = run_result.final_output
+        if isinstance(raw_output, AgentPlanCritiqueOutput):
+            output = raw_output
+        elif isinstance(raw_output, str):
+            output = AgentPlanCritiqueOutput.model_validate_json(raw_output)
+        elif isinstance(raw_output, dict):
+            output = AgentPlanCritiqueOutput.model_validate(raw_output)
+        else:
+            raise TypeError(f"Unexpected critic output type: {type(raw_output)}")
+        return map_agent_critique_output_to_domain(output)
+
+    def diagnose_repair(
+        self,
+        request: RepairDiagnosticianRequest,
+    ) -> RepairDiagnosis:
+        """Diagnose validation command failure and propose targeted, in-scope repair guidance."""
+        agent = self.create_repair_diagnostician_agent()
+        diag_input = {
+            "command": request.failing_result.command,
+            "exit_code": request.failing_result.exit_code,
+            "diagnostics": list(request.failing_result.diagnostics),
+            "output_preview": request.failing_result.sanitized_output[:500],
+            "allowed_scope": list(request.allowed_scope),
+            "previous_attempt_count": len(request.previous_attempts),
+        }
+        user_prompt = (
+            f"Diagnose the following validation failure:\n{json.dumps(diag_input, indent=2)}\n\n"
+            "Propose a targeted root-cause analysis and identify which file requires fixing."
+        )
+        run_config = RunConfig(tracing_disabled=True)
+        run_result = Runner.run_sync(
+            agent,
+            user_prompt,
+            max_turns=5,
+            run_config=run_config,
+        )
+        raw_output = run_result.final_output
+        if isinstance(raw_output, AgentRepairDiagnosisOutput):
+            output = raw_output
+        elif isinstance(raw_output, str):
+            output = AgentRepairDiagnosisOutput.model_validate_json(raw_output)
+        elif isinstance(raw_output, dict):
+            output = AgentRepairDiagnosisOutput.model_validate(raw_output)
+        else:
+            raise TypeError(f"Unexpected diagnostician output type: {type(raw_output)}")
+        return map_agent_diagnosis_output_to_domain(output)
 
     @classmethod
     def create_analysis_agent(
@@ -259,4 +405,74 @@ class OpenAIAgentsRuntimeAdapter(AgentRuntimePort):
             instructions=instructions,
             model=model_name,
             output_type=AgentPlanningOutput,
+        )
+
+    @classmethod
+    def create_inventory_interpreter_agent(
+        cls,
+        inventory: ProjectInventory,
+        model: str = "gpt-4o",
+    ) -> Agent[None]:
+        """Create the read-only inventory interpreter agent."""
+        instructions = (
+            "You are a specialized software architecture interpreter. Your task is to analyze\n"
+            "the repository inventory (frameworks, dependencies, package boundaries, issues)\n"
+            "and synthesize high-level architectural insights, framework assessment notes,\n"
+            "critical migration risks, and a recommended migration strategy.\n\n"
+            "You are strictly read-only and must produce output matching the required schema."
+        )
+        model_name = model or "gpt-4o"
+        return Agent(
+            name="InventoryInterpreterAgent",
+            instructions=instructions,
+            model=model_name,
+            output_type=AgentInventoryInterpretationOutput,
+        )
+
+    @classmethod
+    def create_plan_critic_agent(
+        cls,
+        model: str = "gpt-4o",
+    ) -> Agent[None]:
+        """Create the focused migration plan critic agent."""
+        instructions = (
+            "You are an adversarial, critical software migration plan reviewer. You audit\n"
+            "candidate migration plans to uncover sequencing flaws, missing prerequisite\n"
+            "dependencies, circular dependencies, oversized step scopes (>10 files), and\n"
+            "unaddressed migration risks.\n\n"
+            "Evaluate each step carefully, assign an overall plan quality score between\n"
+            "0.0 and 1.0, and indicate whether approval is recommended or revisions are required.\n"
+            "You are strictly read-only and must produce structured JSON output matching\n"
+            "the required schema."
+        )
+        model_name = model or "gpt-4o"
+        return Agent(
+            name="PlanCriticAgent",
+            instructions=instructions,
+            model=model_name,
+            output_type=AgentPlanCritiqueOutput,
+        )
+
+    @classmethod
+    def create_repair_diagnostician_agent(
+        cls,
+        model: str = "gpt-4o",
+    ) -> Agent[None]:
+        """Create the validation failure repair diagnostician agent."""
+        instructions = (
+            "You are an expert diagnostic assistant specializing in build, compilation, lint,\n"
+            "and test failures. Your role is to diagnose the root cause of a validation failure\n"
+            "and identify which specific file within the pre-approved allowed_scope should be\n"
+            "modified, along with a concise fix summary.\n\n"
+            "Constraints:\n"
+            "1. You must ONLY recommend files that exist in the provided allowed_scope.\n"
+            "2. If the failure cannot be resolved within scope, indicate actionable=false.\n"
+            "3. You are strictly read-only and do not perform file writes or run commands."
+        )
+        model_name = model or "gpt-4o"
+        return Agent(
+            name="RepairDiagnosticianAgent",
+            instructions=instructions,
+            model=model_name,
+            output_type=AgentRepairDiagnosisOutput,
         )

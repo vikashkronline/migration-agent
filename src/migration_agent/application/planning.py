@@ -3,12 +3,17 @@
 import uuid
 from datetime import UTC, datetime
 
+from migration_agent.application.specialists import (
+    DeterministicPlanCriticAggregator,
+    SpecialistCoordinator,
+)
 from migration_agent.application.validator import PlanValidationResult, RuleBasedPlanValidator
 from migration_agent.domain import (
     AnalysisResult,
     ApprovalSignature,
     AssuranceLevel,
     MigrationPlan,
+    PlanCriticRequest,
     PlanStatus,
     ProjectInventory,
     compute_plan_digest,
@@ -21,6 +26,7 @@ from migration_agent.ports import (
     GovernancePort,
     OperationalCheckpoint,
     PlanningRequest,
+    SpecialistRuntimePort,
 )
 
 
@@ -34,12 +40,14 @@ class PlanningService:
         audit_logger: AuditLogPort,
         governance: GovernancePort,
         validator: RuleBasedPlanValidator | None = None,
+        specialist_runtime: SpecialistRuntimePort | None = None,
     ) -> None:
         self.runtime = runtime
         self.checkpoint_store = checkpoint_store
         self.audit_logger = audit_logger
         self.governance = governance
         self.validator = validator or RuleBasedPlanValidator()
+        self.specialist_runtime = specialist_runtime
 
     def create_plan(
         self,
@@ -51,6 +59,7 @@ class PlanningService:
         model: str = "gemini-2.5-pro",
         max_turns: int = 10,
         dry_run: bool = True,
+        enable_critic: bool = False,
     ) -> tuple[MigrationPlan, PlanValidationResult]:
         """Generate, validate, and persist a new migration plan."""
         self.governance.ensure_governance_layout(project_root)
@@ -87,6 +96,28 @@ class PlanningService:
         )
 
         validation = self.validator.validate(preliminary_plan, inventory)
+
+        if enable_critic and self.specialist_runtime is not None:
+            coordinator = SpecialistCoordinator(self.specialist_runtime, self.audit_logger)
+            critique = coordinator.criticize_plan(
+                PlanCriticRequest(
+                    plan=preliminary_plan,
+                    inventory=inventory,
+                    analysis=analysis,
+                ),
+                run_id=active_run_id,
+            )
+            if critique is not None:
+                preliminary_plan, approval_rec, notes = (
+                    DeterministicPlanCriticAggregator.aggregate_critique(preliminary_plan, critique)
+                )
+                validation_warnings = list(validation.warnings) + notes
+                is_valid = validation.is_valid and approval_rec
+                validation = PlanValidationResult(
+                    is_valid=is_valid,
+                    errors=validation.errors,
+                    warnings=validation_warnings,
+                )
 
         initial_status = PlanStatus.NEEDS_APPROVAL if validation.is_valid else PlanStatus.DRAFT
 

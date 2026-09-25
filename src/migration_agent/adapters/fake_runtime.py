@@ -9,8 +9,17 @@ from migration_agent.domain import (
     EvidenceStatus,
     FindingCategory,
     FindingSeverity,
+    InventoryInterpretation,
+    InventoryInterpretationRequest,
+    MigrationAnalysisOutput,
+    MigrationAnalystRequest,
     MigrationStep,
+    PlanCriticRequest,
+    PlanCritique,
+    PlanCritiquePoint,
     ProjectInventory,
+    RepairDiagnosis,
+    RepairDiagnosticianRequest,
     StepRisk,
 )
 from migration_agent.ports import (
@@ -18,11 +27,12 @@ from migration_agent.ports import (
     AnalysisRequest,
     FileReaderPort,
     PlanningRequest,
+    SpecialistRuntimePort,
 )
 
 
-class FakeAgentRuntime(AgentRuntimePort):
-    """Deterministic, offline runtime producing verifiable migration findings and plans."""
+class FakeAgentRuntime(AgentRuntimePort, SpecialistRuntimePort):
+    """Deterministic, offline runtime for findings, plans, and specialist insights."""
 
     def __init__(
         self,
@@ -30,14 +40,26 @@ class FakeAgentRuntime(AgentRuntimePort):
         canned_result: AnalysisResult | None = None,
         canned_findings: tuple[AnalysisFinding, ...] | None = None,
         canned_steps: list[MigrationStep] | None = None,
+        canned_interpretation: InventoryInterpretation | None = None,
+        canned_specialist_analysis: MigrationAnalysisOutput | None = None,
+        canned_critique: PlanCritique | None = None,
+        canned_diagnosis: RepairDiagnosis | None = None,
         summary: str | None = None,
     ) -> None:
         self.canned_result = canned_result
         self.canned_findings = canned_findings
         self.canned_steps = canned_steps
+        self.canned_interpretation = canned_interpretation
+        self.canned_specialist_analysis = canned_specialist_analysis
+        self.canned_critique = canned_critique
+        self.canned_diagnosis = canned_diagnosis
         self.summary = summary or "Deterministic migration analysis completed successfully."
         self.recorded_requests: list[AnalysisRequest] = []
         self.recorded_planning_requests: list[PlanningRequest] = []
+        self.recorded_interpretation_requests: list[InventoryInterpretationRequest] = []
+        self.recorded_analyst_requests: list[MigrationAnalystRequest] = []
+        self.recorded_critique_requests: list[PlanCriticRequest] = []
+        self.recorded_diagnosis_requests: list[RepairDiagnosticianRequest] = []
 
     def analyze(
         self,
@@ -299,3 +321,176 @@ class FakeAgentRuntime(AgentRuntimePort):
             )
 
         return tuple(findings)
+
+    def interpret_inventory(
+        self,
+        request: InventoryInterpretationRequest,
+    ) -> InventoryInterpretation:
+        """Synthesize high-level domain insights and framework notes from repository inventory."""
+        self.recorded_interpretation_requests.append(request)
+
+        if self.canned_interpretation is not None:
+            return self.canned_interpretation
+
+        framework_notes = {
+            f.framework_id: f"Detected with confidence {f.confidence:.2f}"
+            for f in request.inventory.frameworks
+        }
+        repo_name = request.inventory.repository.name
+        summary = (
+            f"Repository '{repo_name}' contains {len(request.inventory.files)} eligible files "
+            f"and {len(request.inventory.dependencies)} declared dependencies across "
+            f"{len(request.inventory.frameworks)} frameworks."
+        )
+        risks = (
+            "Legacy architectural patterns require conversion to modern standalone components",
+            "Dependency versions may require updating during framework migration",
+        )
+        strategy = "Bottom-up component extraction into standalone Angular components"
+        return InventoryInterpretation(
+            architectural_summary=summary,
+            framework_notes=framework_notes,
+            key_risks=risks,
+            recommended_migration_strategy=strategy,
+        )
+
+    def analyze_migration(
+        self,
+        request: MigrationAnalystRequest,
+        file_reader: FileReaderPort,
+    ) -> MigrationAnalysisOutput:
+        """Perform deep code-level migration analysis against eligible repository files."""
+        self.recorded_analyst_requests.append(request)
+
+        if self.canned_specialist_analysis is not None:
+            return self.canned_specialist_analysis
+
+        analysis_req = AnalysisRequest(
+            inventory=request.inventory,
+            provider="fake",
+            model="fake-analyst",
+            max_turns=request.max_turns,
+            dry_run=True,
+        )
+        analysis_res = self.analyze(analysis_req, file_reader)
+        return MigrationAnalysisOutput(
+            summary=analysis_res.summary,
+            findings=analysis_res.findings,
+            assumptions=analysis_res.assumptions,
+            unsupported_constructs=analysis_res.unsupported_constructs,
+            questions=analysis_res.questions,
+        )
+
+    def criticize_plan(
+        self,
+        request: PlanCriticRequest,
+    ) -> PlanCritique:
+        """Audit candidate migration plan for risk, missing dependencies, and quality issues."""
+        self.recorded_critique_requests.append(request)
+
+        if self.canned_critique is not None:
+            return self.canned_critique
+
+        critique_points: list[PlanCritiquePoint] = []
+        flagged_step_ids: list[str] = []
+        step_ids = {s.step_id for s in request.plan.steps}
+
+        for step in request.plan.steps:
+            # Check for unknown dependencies
+            for dep in step.dependencies:
+                if dep not in step_ids:
+                    critique_points.append(
+                        PlanCritiquePoint(
+                            step_id=step.step_id,
+                            severity=FindingSeverity.HIGH,
+                            category="DEPENDENCY",
+                            critique=(
+                                f"Step '{step.step_id}' references non-existent "
+                                f"prerequisite '{dep}'."
+                            ),
+                            recommendation=f"Remove or correct dependency '{dep}'.",
+                        )
+                    )
+                    flagged_step_ids.append(step.step_id)
+
+            # Check for oversized step file scopes
+            if len(step.expected_files) > 10:
+                critique_points.append(
+                    PlanCritiquePoint(
+                        step_id=step.step_id,
+                        severity=FindingSeverity.MEDIUM,
+                        category="SCOPE",
+                        critique=(
+                            f"Step '{step.step_id}' targets {len(step.expected_files)} files, "
+                            "exceeding recommended granularity."
+                        ),
+                        recommendation="Partition step into smaller single-component units.",
+                    )
+                )
+                flagged_step_ids.append(step.step_id)
+
+        has_high_severity = any(
+            p.severity in (FindingSeverity.HIGH, FindingSeverity.CRITICAL) for p in critique_points
+        )
+        approval_recommended = not has_high_severity
+        score = 0.60 if has_high_severity else (0.85 if critique_points else 0.95)
+
+        if not critique_points:
+            critique_points.append(
+                PlanCritiquePoint(
+                    step_id=None,
+                    severity=FindingSeverity.INFO,
+                    category="GENERAL",
+                    critique="Migration plan DAG and file scopes are well-formed and actionable.",
+                    recommendation="Proceed with user approval signing.",
+                )
+            )
+
+        summary = (
+            f"Plan critic evaluated {len(request.plan.steps)} steps: "
+            f"{'approval recommended' if approval_recommended else 'revisions required'} "
+            f"with score {score:.2f}."
+        )
+
+        return PlanCritique(
+            overall_score=score,
+            approval_recommended=approval_recommended,
+            critique_points=tuple(critique_points),
+            flagged_step_ids=tuple(flagged_step_ids),
+            summary=summary,
+        )
+
+    def diagnose_repair(
+        self,
+        request: RepairDiagnosticianRequest,
+    ) -> RepairDiagnosis:
+        """Diagnose validation command failure and propose targeted, in-scope repair guidance."""
+        self.recorded_diagnosis_requests.append(request)
+
+        if self.canned_diagnosis is not None:
+            return self.canned_diagnosis
+
+        target_file = request.allowed_scope[0] if request.allowed_scope else None
+        diag = (
+            request.failing_result.diagnostics[0]
+            if request.failing_result.diagnostics
+            else (
+                request.failing_result.sanitized_output[:120]
+                if request.failing_result.sanitized_output
+                else "Command failure"
+            )
+        )
+
+        fix_summary = (
+            f"Adjust implementation in '{target_file}' to resolve assertion failure."
+            if target_file
+            else "No target file available in scope."
+        )
+        return RepairDiagnosis(
+            root_cause_category="VALIDATION_ASSERTION_FAILURE",
+            actionable=bool(target_file),
+            confidence=0.90 if target_file else 0.30,
+            suggested_file=target_file,
+            diagnostic_details=f"Command '{request.failing_result.command}' failed: {diag}",
+            suggested_fix_summary=fix_summary,
+        )

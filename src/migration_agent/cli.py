@@ -36,6 +36,7 @@ from migration_agent.application import (
     ReportService,
     ResumableExecutionService,
     RuleBasedPlanValidator,
+    SpecialistCoordinator,
     TransformationService,
     ValidationService,
 )
@@ -60,6 +61,7 @@ from migration_agent.ports import (
     CommandRunnerPort,
     FrameworkAdapterRegistry,
     InspectionPolicy,
+    SpecialistRuntimePort,
 )
 
 app = typer.Typer(
@@ -499,6 +501,13 @@ def plan_create_command(
             help="Force use of deterministic offline fake runtime.",
         ),
     ] = False,
+    critic: Annotated[
+        bool,
+        typer.Option(
+            "--critic/--no-critic",
+            help="Enable adversarial Plan Critic subagent audit before finalizing plan.",
+        ),
+    ] = False,
     state_dir: Annotated[
         Path | None,
         typer.Option(
@@ -556,12 +565,14 @@ def plan_create_command(
                 dry_run=dry_run,
             )
 
+        specialist_rt = runtime if isinstance(runtime, SpecialistRuntimePort) else None
         planning_service = PlanningService(
             runtime=runtime,
             checkpoint_store=checkpoint_store,
             audit_logger=checkpoint_store,
             governance=governance,
             validator=validator,
+            specialist_runtime=specialist_rt,
         )
 
         target_governance_root = str(output or path)
@@ -573,6 +584,7 @@ def plan_create_command(
             model=chosen_model,
             max_turns=max_turns,
             dry_run=dry_run,
+            enable_critic=critic,
         )
 
         plan_digest = compute_plan_digest(plan)
@@ -583,6 +595,7 @@ def plan_create_command(
         typer.echo(
             json.dumps(
                 {
+                    "critic_enabled": critic,
                     "errors": validation.errors,
                     "export_file": export_path,
                     "is_valid": validation.is_valid,
@@ -1907,6 +1920,10 @@ def eval_command(
         float,
         typer.Option("--min-recall", help="Minimum required recall score."),
     ] = 0.8,
+    with_specialists: Annotated[
+        bool,
+        typer.Option("--with-specialists", help="Run benchmark with specialist subagents enabled."),
+    ] = False,
 ) -> None:
     """Execute offline evaluation benchmark against synthetic fixtures."""
     fixture_path = path or (Path("tests") / "fixtures" / "ember-classic-mini")
@@ -1932,10 +1949,20 @@ def eval_command(
         filesystem=SafeFilesystemInspector(),
         frameworks=_create_framework_registry(),
     )
-    eval_service = EvaluationService(inventory_service=inventory_service)
-    result = eval_service.run_benchmark(benchmark, fixture_path=fixture_path)
+    coordinator = SpecialistCoordinator(FakeAgentRuntime()) if with_specialists else None
+    eval_service = EvaluationService(
+        inventory_service=inventory_service,
+        specialist_coordinator=coordinator,
+    )
+    if with_specialists:
+        result, specialist_metric = eval_service.run_specialist_benchmark(
+            benchmark, fixture_path=fixture_path
+        )
+    else:
+        result = eval_service.run_benchmark(benchmark, fixture_path=fixture_path)
+        specialist_metric = None
 
-    payload = {
+    payload: dict[str, object] = {
         "benchmark_id": result.benchmark_id,
         "detected_components": list(result.detected_components),
         "metrics": {
@@ -1952,6 +1979,16 @@ def eval_command(
         "summary": result.summary,
         "unexpected_components": list(result.unexpected_components),
     }
+
+    if specialist_metric is not None:
+        payload["specialist_metrics"] = {
+            "baseline_f1": specialist_metric.baseline_f1,
+            "cost_usd": specialist_metric.cost_usd,
+            "improvement_detected": specialist_metric.improvement_detected,
+            "plan_critique_score": specialist_metric.plan_critique_score,
+            "specialist_f1": specialist_metric.specialist_f1,
+            "turns_used": specialist_metric.turns_used,
+        }
 
     if result.metrics.passed:
         typer.echo(json.dumps(payload, separators=(",", ":"), sort_keys=True))

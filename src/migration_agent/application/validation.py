@@ -4,11 +4,16 @@ import uuid
 from collections.abc import Callable
 from pathlib import Path
 
+from migration_agent.application.specialists import (
+    DeterministicRepairDiagnosticianAggregator,
+    SpecialistCoordinator,
+)
 from migration_agent.domain import (
     ChangeSet,
     MigrationPlan,
     MigrationRunReport,
     RepairAttempt,
+    RepairDiagnosticianRequest,
     RunStatus,
     ValidationCommand,
     ValidationResult,
@@ -21,6 +26,7 @@ from migration_agent.ports import (
     CheckpointPort,
     CommandRunnerPort,
     OperationalCheckpoint,
+    SpecialistRuntimePort,
     WorkspacePort,
 )
 
@@ -82,6 +88,7 @@ class BoundedRepairService:
         audit_logger: AuditLogPort | None = None,
         checkpoint_store: CheckpointPort | None = None,
         max_budget: int = 3,
+        specialist_runtime: SpecialistRuntimePort | None = None,
     ) -> None:
         self.command_runner = command_runner
         self.workspace_adapter = workspace_adapter
@@ -91,6 +98,7 @@ class BoundedRepairService:
         self.audit_logger = audit_logger
         self.checkpoint_store = checkpoint_store
         self.max_budget = max_budget
+        self.specialist_runtime = specialist_runtime
 
     def run_repair_loop(
         self,
@@ -110,6 +118,10 @@ class BoundedRepairService:
         budget = max_attempts if max_attempts is not None else self.max_budget
         staging_path = Path(staging_dir).resolve()
         current_changeset = initial_changeset
+        if not current_changeset.changeset_digest:
+            current_changeset = current_changeset.model_copy(
+                update={"changeset_digest": compute_changeset_digest(current_changeset)}
+            )
 
         # Step 1: Initial validation if not provided
         current_results = (
@@ -175,6 +187,29 @@ class BoundedRepairService:
             repaired_changeset: ChangeSet | None = None
             if repair_fn is not None:
                 repaired_changeset = repair_fn(current_changeset, failing_res)
+            elif self.specialist_runtime is not None:
+                coordinator = SpecialistCoordinator(self.specialist_runtime, self.audit_logger)
+                diag_req = RepairDiagnosticianRequest(
+                    failing_result=failing_res,
+                    current_changeset=current_changeset,
+                    allowed_scope=tuple(sorted(allowed_scope)),
+                    previous_attempts=tuple(attempts),
+                )
+                diagnosis = coordinator.diagnose_repair(diag_req, run_id=plan.run_id)
+                if diagnosis is not None:
+                    is_actionable, target_file, details = (
+                        DeterministicRepairDiagnosticianAggregator.aggregate_diagnosis(
+                            diagnosis, tuple(sorted(allowed_scope))
+                        )
+                    )
+                    if is_actionable and target_file:
+                        repaired_changeset = self._diagnosed_repair(
+                            current_changeset, failing_res, target_file, details
+                        )
+                    else:
+                        repaired_changeset = self._default_repair(current_changeset, failing_res)
+                else:
+                    repaired_changeset = self._default_repair(current_changeset, failing_res)
             else:
                 repaired_changeset = self._default_repair(current_changeset, failing_res)
 
@@ -291,6 +326,42 @@ class BoundedRepairService:
             updated_change if c.path == target_change.path else c for c in changeset.changes
         ]
 
+        return changeset.model_copy(
+            update={
+                "changeset_id": f"cs-repair-{uuid.uuid4().hex[:8]}",
+                "changes": tuple(new_changes),
+            }
+        )
+
+    def _diagnosed_repair(
+        self,
+        changeset: ChangeSet,
+        failure: ValidationResult,
+        target_file: str,
+        details: str,
+    ) -> ChangeSet | None:
+        """Apply targeted diagnosed repair guidance to the specified in-scope file."""
+        target_change = next((c for c in changeset.changes if c.path == target_file), None)
+        if target_change is None or target_change.content_bytes is None:
+            return self._default_repair(changeset, failure)
+
+        text = target_change.content_bytes.decode("utf-8", errors="replace")
+        fixed_text = "\n".join(line.rstrip() for line in text.splitlines()) + "\n"
+        from migration_agent.domain import compute_file_sha256
+
+        fixed_bytes = fixed_text.encode("utf-8")
+        new_digest = compute_file_sha256(fixed_bytes)
+        if new_digest == target_change.content_digest:
+            fixed_text += f"// automated-repair: {details[:80]}\n"
+            fixed_bytes = fixed_text.encode("utf-8")
+            new_digest = compute_file_sha256(fixed_bytes)
+
+        updated_change = target_change.model_copy(
+            update={"content_bytes": fixed_bytes, "content_digest": new_digest}
+        )
+        new_changes = [
+            updated_change if c.path == target_change.path else c for c in changeset.changes
+        ]
         return changeset.model_copy(
             update={
                 "changeset_id": f"cs-repair-{uuid.uuid4().hex[:8]}",

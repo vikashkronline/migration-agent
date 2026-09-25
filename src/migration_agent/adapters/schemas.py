@@ -8,7 +8,11 @@ from migration_agent.domain import (
     EvidenceReference,
     FindingCategory,
     FindingSeverity,
+    InventoryInterpretation,
     MigrationStep,
+    PlanCritique,
+    PlanCritiquePoint,
+    RepairDiagnosis,
     StepRisk,
 )
 from migration_agent.ports import AnalysisRequest
@@ -215,3 +219,121 @@ def map_agent_plan_output_to_domain(
         )
         for step in output.steps
     ]
+
+
+class AgentInventoryInterpretationOutput(BaseModel):
+    """Structured output contract for inventory interpreter agent."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    architectural_summary: str = Field(description="High-level architectural assessment.")
+    framework_notes: dict[str, str] = Field(
+        default_factory=dict,
+        description="Framework-specific assessment notes.",
+    )
+    key_risks: tuple[str, ...] = Field(
+        default=(),
+        description="Architectural or technical risks.",
+    )
+    recommended_migration_strategy: str = Field(
+        default="",
+        description="High-level recommended migration strategy.",
+    )
+
+
+class AgentPlanCritiquePoint(BaseModel):
+    """Critique point from plan critic agent."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    step_id: str | None = Field(default=None, description="Step ID if step-specific.")
+    severity: FindingSeverity = Field(description="Severity of the critique point.")
+    category: str = Field(description="Category of the critique.")
+    critique: str = Field(description="Explanation of the potential issue.")
+    recommendation: str = Field(default="", description="Suggested fix or mitigation.")
+
+
+class AgentPlanCritiqueOutput(BaseModel):
+    """Structured output contract for plan critic agent."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    overall_score: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Plan quality score between 0.0 and 1.0.",
+    )
+    approval_recommended: bool = Field(description="Whether the plan is ready for approval.")
+    critique_points: tuple[AgentPlanCritiquePoint, ...] = Field(
+        default=(),
+        description="List of critique points.",
+    )
+    flagged_step_ids: tuple[str, ...] = Field(
+        default=(),
+        description="IDs of steps flagged as requiring modification.",
+    )
+    summary: str = Field(default="", description="Summary of the plan critique.")
+
+
+class AgentRepairDiagnosisOutput(BaseModel):
+    """Structured output contract for repair diagnostician agent."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    root_cause_category: str = Field(description="Category of the failure root cause.")
+    actionable: bool = Field(description="Whether the issue can be automatically repaired.")
+    confidence: float = Field(ge=0.0, le=1.0, description="Confidence in the diagnosis.")
+    suggested_file: str | None = Field(
+        default=None,
+        description="Specific allowed file to repair.",
+    )
+    diagnostic_details: str = Field(default="", description="Detailed diagnostic explanation.")
+    suggested_fix_summary: str = Field(default="", description="Summary of suggested fix.")
+
+
+def map_agent_interpretation_output_to_domain(
+    output: AgentInventoryInterpretationOutput,
+) -> InventoryInterpretation:
+    """Translate agent inventory interpretation output to domain model."""
+    return InventoryInterpretation(
+        architectural_summary=output.architectural_summary,
+        framework_notes=output.framework_notes,
+        key_risks=output.key_risks,
+        recommended_migration_strategy=output.recommended_migration_strategy,
+    )
+
+
+def map_agent_critique_output_to_domain(
+    output: AgentPlanCritiqueOutput,
+) -> PlanCritique:
+    """Translate agent plan critique output to domain model."""
+    return PlanCritique(
+        overall_score=output.overall_score,
+        approval_recommended=output.approval_recommended,
+        critique_points=tuple(
+            PlanCritiquePoint(
+                step_id=p.step_id,
+                severity=p.severity,
+                category=p.category,
+                critique=p.critique,
+                recommendation=p.recommendation,
+            )
+            for p in output.critique_points
+        ),
+        flagged_step_ids=output.flagged_step_ids,
+        summary=output.summary,
+    )
+
+
+def map_agent_diagnosis_output_to_domain(
+    output: AgentRepairDiagnosisOutput,
+) -> RepairDiagnosis:
+    """Translate agent repair diagnosis output to domain model."""
+    return RepairDiagnosis(
+        root_cause_category=output.root_cause_category,
+        actionable=output.actionable,
+        confidence=output.confidence,
+        suggested_file=output.suggested_file,
+        diagnostic_details=output.diagnostic_details,
+        suggested_fix_summary=output.suggested_fix_summary,
+    )
