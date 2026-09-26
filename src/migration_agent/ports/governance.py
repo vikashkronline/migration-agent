@@ -35,7 +35,10 @@ class GovernancePort(Protocol):
     """Boundary for managing Git-native governance metadata in .agent/."""
 
     def ensure_governance_layout(self, project_root: str, project_id: str | None = None) -> None:
-        """Ensure .agent/ manifest and policy files exist with default configuration."""
+        """Ensure .agent/ manifest, policies, access roles, and knowledge folders exist."""
+
+    def get_manifest(self, project_root: str) -> ProjectManifest | None:
+        """Load the platform project manifest from .agent/manifest.json."""
 
     def get_policy(self, project_root: str) -> ProjectPolicy:
         """Load the active safety policy for the project."""

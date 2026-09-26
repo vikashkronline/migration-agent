@@ -17,15 +17,19 @@ from migration_agent.adapters.schemas import (
     AgentInventoryInterpretationOutput,
     AgentPlanCritiqueOutput,
     AgentPlanningOutput,
+    AgentQAOutput,
     AgentRepairDiagnosisOutput,
     map_agent_critique_output_to_domain,
     map_agent_diagnosis_output_to_domain,
     map_agent_interpretation_output_to_domain,
     map_agent_output_to_domain,
     map_agent_plan_output_to_domain,
+    map_agent_qa_output_to_domain,
 )
 from migration_agent.domain import (
     AnalysisResult,
+    ContextualAnswer,
+    ContextualQARequest,
     InventoryInterpretation,
     InventoryInterpretationRequest,
     MigrationAnalysisOutput,
@@ -476,3 +480,49 @@ class OpenAIAgentsRuntimeAdapter(AgentRuntimePort, SpecialistRuntimePort):
             model=model_name,
             output_type=AgentRepairDiagnosisOutput,
         )
+
+    def ask(
+        self,
+        request: ContextualQARequest,
+    ) -> ContextualAnswer:
+        """Run contextual Q&A using OpenAI Agents SDK with bounded ContextEnvelope."""
+        instructions = (
+            "You are an expert software engineering and migration assistant. "
+            "Answer the developer's technical question accurately using strictly "
+            "the provided context.\n"
+            "Rules:\n"
+            "1. Base answers on cited evidence, decisions (ADRs), and curated learnings provided.\n"
+            "2. Never hallucinate nonexistent files or APIs.\n"
+            "3. Cite concrete file paths in citations if relevant.\n"
+            "4. Be concise, direct, and technically precise."
+        )
+
+        model_name = request.model or "gpt-4o"
+        agent: Agent[None] = Agent(
+            name="ContextualQAAgent",
+            instructions=instructions,
+            model=model_name,
+            output_type=AgentQAOutput,
+        )
+
+        envelope = request.envelope
+        prompt = (
+            f"Project: {envelope.project_root}\n"
+            f"Query: {envelope.query}\n"
+            f"Selected Entity: {envelope.selected_entity or 'None'}\n"
+            f"Selected Artifact: {envelope.selected_artifact or 'None'}\n"
+            f"Active Run: {envelope.current_run_id or 'None'}\n"
+            f"Decisions: {list(envelope.relevant_decisions)}\n"
+            f"Learnings: {list(envelope.relevant_learnings)}\n"
+            f"Policy Digest: {envelope.active_policy_digest or 'None'}\n"
+        )
+
+        result = Runner.run_sync(
+            agent,
+            prompt,
+            run_config=RunConfig(workflow_name="ContextualQAWorkflow"),
+        )
+        if not isinstance(result.final_output, AgentQAOutput):
+            raise TypeError("Agent did not return structured AgentQAOutput.")
+
+        return map_agent_qa_output_to_domain(result.final_output, envelope.query)

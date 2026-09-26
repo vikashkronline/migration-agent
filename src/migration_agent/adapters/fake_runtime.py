@@ -5,6 +5,8 @@ from pathlib import Path
 from migration_agent.domain import (
     AnalysisFinding,
     AnalysisResult,
+    ContextualAnswer,
+    ContextualQARequest,
     EvidenceReference,
     EvidenceStatus,
     FindingCategory,
@@ -44,6 +46,7 @@ class FakeAgentRuntime(AgentRuntimePort, SpecialistRuntimePort):
         canned_specialist_analysis: MigrationAnalysisOutput | None = None,
         canned_critique: PlanCritique | None = None,
         canned_diagnosis: RepairDiagnosis | None = None,
+        canned_answer: ContextualAnswer | None = None,
         summary: str | None = None,
     ) -> None:
         self.canned_result = canned_result
@@ -53,6 +56,7 @@ class FakeAgentRuntime(AgentRuntimePort, SpecialistRuntimePort):
         self.canned_specialist_analysis = canned_specialist_analysis
         self.canned_critique = canned_critique
         self.canned_diagnosis = canned_diagnosis
+        self.canned_answer = canned_answer
         self.summary = summary or "Deterministic migration analysis completed successfully."
         self.recorded_requests: list[AnalysisRequest] = []
         self.recorded_planning_requests: list[PlanningRequest] = []
@@ -60,6 +64,7 @@ class FakeAgentRuntime(AgentRuntimePort, SpecialistRuntimePort):
         self.recorded_analyst_requests: list[MigrationAnalystRequest] = []
         self.recorded_critique_requests: list[PlanCriticRequest] = []
         self.recorded_diagnosis_requests: list[RepairDiagnosticianRequest] = []
+        self.recorded_qa_requests: list[ContextualQARequest] = []
 
     def analyze(
         self,
@@ -493,4 +498,43 @@ class FakeAgentRuntime(AgentRuntimePort, SpecialistRuntimePort):
             suggested_file=target_file,
             diagnostic_details=f"Command '{request.failing_result.command}' failed: {diag}",
             suggested_fix_summary=fix_summary,
+        )
+
+    def ask(
+        self,
+        request: ContextualQARequest,
+    ) -> ContextualAnswer:
+        """Answer a contextual user query using bounded context."""
+        self.recorded_qa_requests.append(request)
+
+        if self.canned_answer is not None:
+            return self.canned_answer
+
+        envelope = request.envelope
+        citations: list[EvidenceReference] = list(envelope.evidence_references)
+        if not citations and envelope.selected_artifact:
+            citations.append(
+                EvidenceReference(
+                    path=envelope.selected_artifact,
+                    description="Referenced artifact context",
+                )
+            )
+
+        answer_text = (
+            f"Based on project context at '{envelope.project_root}', "
+            f"in response to '{envelope.query}': "
+            f"The architecture maintains decoupled boundaries and deterministic evidence."
+        )
+
+        return ContextualAnswer(
+            query=envelope.query,
+            answer=answer_text,
+            confidence=1.0,
+            citations=tuple(citations),
+            referenced_decisions=envelope.relevant_decisions,
+            referenced_learnings=envelope.relevant_learnings,
+            assumptions=("Assumes clean working tree and validated inventory.",),
+            follow_up_suggestions=(
+                "Run 'migration-agent inventory' to inspect recent file changes.",
+            ),
         )

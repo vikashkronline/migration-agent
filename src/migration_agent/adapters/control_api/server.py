@@ -303,6 +303,20 @@ class _ControlApiRequestHandler(http.server.BaseHTTPRequestHandler):
                 apply_payload = ApplyRunPayload(**body)
                 run_detail = service.apply_run(run_id, apply_payload, target_root)
                 self._send_json_response(run_detail.model_dump())
+            elif path in ("/api/v1/contextual-qa", "/api/v1/ask"):
+                query_str = body.get("query", "")
+                if not query_str:
+                    self._send_error_response(
+                        ControlApiErrorCode.INVALID_REQUEST, "Missing 'query' in request body.", 400
+                    )
+                    return
+                qa_res = service.contextual_qa(
+                    target_root,
+                    query_str,
+                    entity=body.get("entity"),
+                    run_id=body.get("run_id"),
+                )
+                self._send_json_response(qa_res)
             else:
                 self._send_error_response(
                     ControlApiErrorCode.NOT_FOUND, f"Endpoint '{path}' not found.", 404
@@ -493,6 +507,7 @@ class LoopbackControlServer(ControlApiServerPort):
         # Bind with SO_REUSEADDR
         handler_class = _ControlApiRequestHandler
         self._httpd = http.server.ThreadingHTTPServer((host, port), handler_class)
+        self.port = self._httpd.server_port
         # Pass server reference to handler
         self._httpd.server = self  # type: ignore[attr-defined]
         self._httpd.control_service = self.control_service  # type: ignore[attr-defined]
@@ -500,10 +515,15 @@ class LoopbackControlServer(ControlApiServerPort):
         self._httpd.static_dir = self.static_dir  # type: ignore[attr-defined]
         self._httpd.broadcaster = self.broadcaster  # type: ignore[attr-defined]
         self._httpd.session_token = self.session_token  # type: ignore[attr-defined]
-        self._httpd.port = port  # type: ignore[attr-defined]
+        self._httpd.port = self.port  # type: ignore[attr-defined]
 
         self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)
         self._thread.start()
+
+    @property
+    def server_port(self) -> int:
+        """Return the active server port."""
+        return self.port
 
     def stop(self) -> None:
         """Shut down the HTTP server and wait for thread termination."""

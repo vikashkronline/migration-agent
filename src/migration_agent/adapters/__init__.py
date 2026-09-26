@@ -25,6 +25,7 @@ from migration_agent.adapters.fullstack_adapters import (
 from migration_agent.adapters.fullstack_reporting import FullStackReportWriter
 from migration_agent.adapters.gemini import GeminiRuntimeAdapter
 from migration_agent.adapters.governance import GitGovernanceAdapter
+from migration_agent.adapters.knowledge import GitKnowledgeAdapter
 from migration_agent.adapters.reporting import AnalysisReportWriter, InventoryReportWriter
 from migration_agent.adapters.transforms import (
     AngularJsDirectiveExtractor,
@@ -60,6 +61,7 @@ __all__ = [
     "FullStackReportWriter",
     "GeminiRuntimeAdapter",
     "GitGovernanceAdapter",
+    "GitKnowledgeAdapter",
     "InMemoryEventBroadcaster",
     "InfrastructureAdapter",
     "InventoryReportWriter",

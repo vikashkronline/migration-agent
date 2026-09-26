@@ -1,5 +1,6 @@
 """Git-native governance adapter managing .agent/ manifest, policies, and plan exports."""
 
+import json
 from pathlib import Path
 
 from migration_agent.domain import MigrationPlan, compute_canonical_digest
@@ -18,11 +19,20 @@ class GitGovernanceAdapter(GovernancePort):
         return agent_dir
 
     def ensure_governance_layout(self, project_root: str, project_id: str | None = None) -> None:
-        """Ensure .agent/ layout exists with manifest and default policy."""
+        """Ensure full .agent/ layout exists with manifest, policy, roles, and knowledge."""
         agent_dir = self._resolve_agent_dir(project_root)
         agent_dir.mkdir(parents=True, exist_ok=True)
-        plans_dir = agent_dir / "plans"
-        plans_dir.mkdir(parents=True, exist_ok=True)
+
+        for subdir in [
+            "plans",
+            "workflows",
+            "challenges",
+            "solutions",
+            "learnings",
+            "decisions",
+            "access",
+        ]:
+            (agent_dir / subdir).mkdir(parents=True, exist_ok=True)
 
         manifest_file = agent_dir / "manifest.json"
         if not manifest_file.exists():
@@ -34,6 +44,53 @@ class GitGovernanceAdapter(GovernancePort):
         if not policy_file.exists():
             policy = ProjectPolicy()
             policy_file.write_text(policy.model_dump_json(indent=2), encoding="utf-8")
+
+        config_file = agent_dir / "config.json"
+        if not config_file.exists():
+            config_file.write_text(
+                '{\n  "version": 1,\n  "workflows": {}\n}\n',
+                encoding="utf-8",
+            )
+
+        roles_file = agent_dir / "access" / "roles.json"
+        if not roles_file.exists():
+            roles_json = json.dumps(
+                {
+                    "roles": {
+                        "admin": ["*"],
+                        "developer": [
+                            "project.read",
+                            "workflow.execute",
+                            "changeset.stage",
+                            "changeset.apply",
+                            "learning.approve",
+                        ],
+                        "viewer": ["project.read"],
+                    }
+                },
+                indent=2,
+            )
+            roles_file.write_text(f"{roles_json}\n", encoding="utf-8")
+
+        principals_file = agent_dir / "access" / "principals.json"
+        if not principals_file.exists():
+            principals_file.write_text(
+                '{\n  "principals": {}\n}\n',
+                encoding="utf-8",
+            )
+
+        gitignore_file = agent_dir / ".gitignore"
+        if not gitignore_file.exists():
+            gitignore_file.write_text("local/\n*.tmp\n", encoding="utf-8")
+
+    def get_manifest(self, project_root: str) -> ProjectManifest | None:
+        """Load platform project manifest from .agent/manifest.json."""
+        agent_dir = self._resolve_agent_dir(project_root)
+        manifest_file = agent_dir / "manifest.json"
+        if not manifest_file.exists():
+            return None
+        content = manifest_file.read_text(encoding="utf-8")
+        return ProjectManifest.model_validate_json(content)
 
     def get_policy(self, project_root: str) -> ProjectPolicy:
         """Load project safety policy from .agent/policy.json, creating default if absent."""

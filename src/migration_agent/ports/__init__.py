@@ -28,6 +28,7 @@ from migration_agent.ports.governance import (
     ProjectManifest,
     ProjectPolicy,
 )
+from migration_agent.ports.knowledge import KnowledgePort
 from migration_agent.ports.specialists import SpecialistRuntimePort
 from migration_agent.ports.transformation import (
     ComponentExtractorPort,
@@ -59,6 +60,7 @@ __all__ = [
     "GovernancePort",
     "InspectionPolicy",
     "IntermediateComponent",
+    "KnowledgePort",
     "OperationalCheckpoint",
     "PlanningRequest",
     "ProjectManifest",

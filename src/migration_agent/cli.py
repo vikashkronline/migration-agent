@@ -26,6 +26,7 @@ from migration_agent.adapters import (
     FullStackReportWriter,
     GeminiRuntimeAdapter,
     GitGovernanceAdapter,
+    GitKnowledgeAdapter,
     InMemoryEventBroadcaster,
     InventoryReportWriter,
     LocalTrustStoreAdapter,
@@ -40,11 +41,14 @@ from migration_agent.adapters import (
 from migration_agent.application import (
     AnalysisService,
     BoundedRepairService,
+    ContextualQAService,
     ControlApiService,
     EvaluationService,
     FullStackDiscoveryService,
     InventoryService,
+    KnowledgeService,
     PlanningService,
+    ProjectAdoptionService,
     ReportService,
     ResumableExecutionService,
     RuleBasedPlanValidator,
@@ -106,6 +110,34 @@ run_app = typer.Typer(
     pretty_exceptions_enable=False,
 )
 app.add_typer(run_app, name="run")
+
+challenge_app = typer.Typer(
+    help="Record and inspect diagnostic challenges and migration hurdles.",
+    no_args_is_help=True,
+    pretty_exceptions_enable=False,
+)
+app.add_typer(challenge_app, name="challenge")
+
+solution_app = typer.Typer(
+    help="Propose and inspect candidate solutions.",
+    no_args_is_help=True,
+    pretty_exceptions_enable=False,
+)
+app.add_typer(solution_app, name="solution")
+
+learning_app = typer.Typer(
+    help="Approve and inspect curated project learnings (ADR-3, Invariant 16).",
+    no_args_is_help=True,
+    pretty_exceptions_enable=False,
+)
+app.add_typer(learning_app, name="learning")
+
+decision_app = typer.Typer(
+    help="Record and inspect Architectural Decision Records (ADRs).",
+    no_args_is_help=True,
+    pretty_exceptions_enable=False,
+)
+app.add_typer(decision_app, name="decision")
 
 _MINIMUM_PYTHON = (3, 12)
 _RUNTIME_DISTRIBUTIONS = (
@@ -2356,10 +2388,16 @@ def ui_command(
     checkpoint_db = target_root / ".agent" / "checkpoints.db"
     checkpoint_store = SqliteCheckpointStore(checkpoint_db) if checkpoint_db.exists() else None
     governance = GitGovernanceAdapter()
+    knowledge_adapter = GitKnowledgeAdapter()
     broadcaster = InMemoryEventBroadcaster()
     discovery_service = FullStackDiscoveryService(
         filesystem=SafeFilesystemInspector(),
         adapters=create_default_domain_adapters(),
+    )
+    qa_service = ContextualQAService(
+        runtime=FakeAgentRuntime(),
+        knowledge_port=knowledge_adapter,
+        governance_port=governance,
     )
 
     control_service = ControlApiService(
@@ -2367,6 +2405,8 @@ def ui_command(
         governance_port=governance,
         event_broadcaster=broadcaster,
         discovery_service=discovery_service,
+        knowledge_port=knowledge_adapter,
+        qa_service=qa_service,
     )
 
     server = LoopbackControlServer(
@@ -2408,6 +2448,412 @@ def ui_command(
     except (KeyboardInterrupt, SystemExit):
         server.stop()
         typer.echo(json.dumps({"status": "stopped"}, separators=(",", ":")))
+
+
+# ============================================================================
+# Phase 12 Commands: Project Lifecycle, Knowledge Engine & Contextual Q&A
+# ============================================================================
+
+
+@app.command("init")
+def init_project(
+    path: Annotated[
+        Path,
+        typer.Argument(
+            help="Target project directory to initialize.",
+        ),
+    ] = Path("."),
+    project_id: Annotated[
+        str | None,
+        typer.Option(
+            "--id",
+            help="Custom project identifier.",
+        ),
+    ] = None,
+) -> None:
+    """Scenario A: Initialize a new project with Git-native .agent/ governance layout."""
+    governance = GitGovernanceAdapter()
+    inspector = SafeFilesystemInspector()
+    registry = _create_framework_registry()
+    inv_svc = InventoryService(inspector, registry)
+    fullstack_svc = FullStackDiscoveryService(inspector, create_default_domain_adapters())
+    adoption_svc = ProjectAdoptionService(governance, inv_svc, fullstack_svc)
+
+    manifest = adoption_svc.init(path, project_id=project_id)
+    typer.echo(
+        json.dumps(
+            {
+                "status": "initialized",
+                "project_id": manifest.project_id,
+                "platform_version": manifest.platform_version,
+                "path": str(path.resolve()),
+            },
+            indent=2,
+        )
+    )
+
+
+@app.command("adopt")
+def adopt_project(
+    path: Annotated[
+        Path,
+        typer.Argument(
+            help="Target repository directory to adopt.",
+        ),
+    ] = Path("."),
+    allow_dirty: Annotated[
+        bool,
+        typer.Option(
+            "--allow-dirty",
+            help="Allow adoption on a Git repository with uncommitted changes.",
+        ),
+    ] = False,
+    docs_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--docs-dir",
+            help="Directory to write architecture documentation (default: docs/architecture).",
+        ),
+    ] = None,
+    project_id: Annotated[
+        str | None,
+        typer.Option(
+            "--id",
+            help="Custom project identifier.",
+        ),
+    ] = None,
+) -> None:
+    """Scenario B: Adopt an existing repository into the platform with read-only inspection."""
+    governance = GitGovernanceAdapter()
+    inspector = SafeFilesystemInspector()
+    registry = _create_framework_registry()
+    inv_svc = InventoryService(inspector, registry)
+    fullstack_svc = FullStackDiscoveryService(inspector, create_default_domain_adapters())
+    adoption_svc = ProjectAdoptionService(governance, inv_svc, fullstack_svc)
+
+    try:
+        report = adoption_svc.adopt(
+            path,
+            allow_dirty=allow_dirty,
+            docs_dir=docs_dir,
+            project_id=project_id,
+        )
+    except RuntimeError as err:
+        typer.echo(json.dumps({"error": str(err), "status": "dirty_worktree"}, indent=2), err=True)
+        raise typer.Exit(code=1) from err
+
+    typer.echo(
+        json.dumps(
+            {
+                "status": "adopted",
+                "project_id": report.project_id,
+                "target_path": report.target_path,
+                "eligible_files": report.eligible_files_count,
+                "frameworks": list(report.detected_frameworks),
+                "cross_domain_nodes": report.cross_domain_nodes_count,
+                "docs_directory": report.docs_directory,
+            },
+            indent=2,
+        )
+    )
+
+
+@challenge_app.command("record")
+def record_challenge_command(
+    title: Annotated[str, typer.Option("--title", "-t", help="Challenge title.")],
+    description: Annotated[str, typer.Option("--desc", "-d", help="Detailed description.")],
+    path: Annotated[Path, typer.Argument(help="Target project directory.")] = Path("."),
+    category: Annotated[str, typer.Option("--category", "-c", help="Category.")] = "GENERAL",
+    diagnostics: Annotated[
+        list[str] | None, typer.Option("--diag", help="Diagnostic citation.")
+    ] = None,
+    challenge_id: Annotated[str | None, typer.Option("--id", help="Explicit challenge ID.")] = None,
+) -> None:
+    """Record a diagnostic hurdle or migration challenge in .agent/challenges/."""
+    adapter = GitKnowledgeAdapter()
+    service = KnowledgeService(adapter)
+    record = service.record_challenge(
+        str(path.resolve()),
+        title=title,
+        description=description,
+        category=category,
+        diagnostic_citations=tuple(diagnostics or ()),
+        challenge_id=challenge_id,
+    )
+    typer.echo(
+        json.dumps(
+            {
+                "status": "recorded",
+                "challenge_id": record.challenge_id,
+                "title": record.title,
+                "category": record.category,
+            },
+            indent=2,
+        )
+    )
+
+
+@challenge_app.command("list")
+def list_challenges_command(
+    path: Annotated[Path, typer.Argument(help="Target project directory.")] = Path("."),
+) -> None:
+    """List recorded migration challenges from .agent/challenges/."""
+    adapter = GitKnowledgeAdapter()
+    service = KnowledgeService(adapter)
+    challenges = service.list_challenges(str(path.resolve()))
+    typer.echo(
+        json.dumps(
+            [c.model_dump(mode="json") for c in challenges],
+            indent=2,
+        )
+    )
+
+
+@solution_app.command("record")
+def record_solution_command(
+    challenge_id: Annotated[str, typer.Option("--challenge", "-c", help="Target challenge ID.")],
+    approach: Annotated[str, typer.Option("--approach", "-a", help="Proposed solution approach.")],
+    path: Annotated[Path, typer.Argument(help="Target project directory.")] = Path("."),
+    changeset: Annotated[
+        str | None, typer.Option("--changeset", help="Optional ChangeSet ID reference.")
+    ] = None,
+    run_id: Annotated[
+        str | None, typer.Option("--run-id", help="Optional verifying Run ID.")
+    ] = None,
+    solution_id: Annotated[str | None, typer.Option("--id", help="Explicit solution ID.")] = None,
+) -> None:
+    """Propose and record a candidate solution for a known challenge."""
+    adapter = GitKnowledgeAdapter()
+    service = KnowledgeService(adapter)
+    try:
+        solution = service.propose_solution(
+            str(path.resolve()),
+            challenge_id=challenge_id,
+            proposed_approach=approach,
+            changeset_ref=changeset,
+            verified_by_run_id=run_id,
+            solution_id=solution_id,
+        )
+    except ValueError as err:
+        typer.echo(json.dumps({"error": str(err), "status": "error"}, indent=2), err=True)
+        raise typer.Exit(code=1) from err
+
+    typer.echo(
+        json.dumps(
+            {
+                "status": "proposed",
+                "solution_id": solution.solution_id,
+                "challenge_id": solution.challenge_id,
+                "approach": solution.proposed_approach,
+            },
+            indent=2,
+        )
+    )
+
+
+@solution_app.command("list")
+def list_solutions_command(
+    path: Annotated[Path, typer.Argument(help="Target project directory.")] = Path("."),
+) -> None:
+    """List proposed candidate solutions from .agent/solutions/."""
+    adapter = GitKnowledgeAdapter()
+    service = KnowledgeService(adapter)
+    solutions = service.list_solutions(str(path.resolve()))
+    typer.echo(
+        json.dumps(
+            [s.model_dump(mode="json") for s in solutions],
+            indent=2,
+        )
+    )
+
+
+@learning_app.command("approve")
+def approve_learning_command(
+    solution_id: Annotated[str, typer.Option("--solution", "-s", help="Candidate solution ID.")],
+    approver: Annotated[
+        str, typer.Option("--approver", help="Human approver identifier (Invariant 16).")
+    ],
+    title: Annotated[str, typer.Option("--title", "-t", help="Title of curated learning.")],
+    findings: Annotated[str, typer.Option("--findings", help="Core diagnostic findings.")],
+    pattern: Annotated[str, typer.Option("--pattern", help="Recommended pattern.")],
+    path: Annotated[Path, typer.Argument(help="Target project directory.")] = Path("."),
+    anti_patterns: Annotated[
+        list[str] | None, typer.Option("--anti-pattern", help="Anti-patterns to avoid.")
+    ] = None,
+    tags: Annotated[
+        list[str] | None, typer.Option("--tag", help="Tags for categorization.")
+    ] = None,
+    learning_id: Annotated[str | None, typer.Option("--id", help="Explicit learning ID.")] = None,
+) -> None:
+    """Promote a candidate solution to a curated learning with human approval (Invariant 16)."""
+    adapter = GitKnowledgeAdapter()
+    service = KnowledgeService(adapter)
+    try:
+        learning = service.approve_learning(
+            str(path.resolve()),
+            solution_id=solution_id,
+            approved_by=approver,
+            title=title,
+            findings=findings,
+            recommended_pattern=pattern,
+            anti_patterns=tuple(anti_patterns or ()),
+            tags=tuple(tags or ()),
+            learning_id=learning_id,
+        )
+    except ValueError as err:
+        typer.echo(json.dumps({"error": str(err), "status": "error"}, indent=2), err=True)
+        raise typer.Exit(code=1) from err
+
+    typer.echo(
+        json.dumps(
+            {
+                "status": "approved",
+                "learning_id": learning.learning_id,
+                "title": learning.title,
+                "approved_by": learning.approved_by,
+            },
+            indent=2,
+        )
+    )
+
+
+@learning_app.command("list")
+def list_learnings_command(
+    path: Annotated[Path, typer.Argument(help="Target project directory.")] = Path("."),
+) -> None:
+    """List human-approved curated project learnings from .agent/learnings/."""
+    adapter = GitKnowledgeAdapter()
+    service = KnowledgeService(adapter)
+    learnings = service.list_learnings(str(path.resolve()))
+    typer.echo(
+        json.dumps(
+            [lrn.model_dump(mode="json") for lrn in learnings],
+            indent=2,
+        )
+    )
+
+
+@decision_app.command("record")
+def record_decision_command(
+    decision_id: Annotated[str, typer.Option("--id", help="ADR identifier (e.g. ADR-001).")],
+    title: Annotated[str, typer.Option("--title", "-t", help="ADR title.")],
+    context: Annotated[str, typer.Option("--context", help="Context and problem statement.")],
+    decision: Annotated[str, typer.Option("--decision", help="Decision statement.")],
+    consequences: Annotated[str, typer.Option("--consequences", help="Expected consequences.")],
+    by: Annotated[str, typer.Option("--by", help="Author/decided_by identifier.")],
+    path: Annotated[Path, typer.Argument(help="Target project directory.")] = Path("."),
+) -> None:
+    """Record an Architectural Decision Record (ADR) in .agent/decisions/."""
+    adapter = GitKnowledgeAdapter()
+    service = KnowledgeService(adapter)
+    try:
+        adr = service.record_decision(
+            str(path.resolve()),
+            decision_id=decision_id,
+            title=title,
+            context=context,
+            decision=decision,
+            consequences=consequences,
+            decided_by=by,
+        )
+    except ValueError as err:
+        typer.echo(json.dumps({"error": str(err), "status": "error"}, indent=2), err=True)
+        raise typer.Exit(code=1) from err
+
+    typer.echo(
+        json.dumps(
+            {
+                "status": "recorded",
+                "decision_id": adr.decision_id,
+                "title": adr.title,
+                "decided_by": adr.decided_by,
+            },
+            indent=2,
+        )
+    )
+
+
+@decision_app.command("list")
+def list_decisions_command(
+    path: Annotated[Path, typer.Argument(help="Target project directory.")] = Path("."),
+) -> None:
+    """List Architectural Decision Records from .agent/decisions/."""
+    adapter = GitKnowledgeAdapter()
+    service = KnowledgeService(adapter)
+    decisions = service.list_decisions(str(path.resolve()))
+    typer.echo(
+        json.dumps(
+            [d.model_dump(mode="json") for d in decisions],
+            indent=2,
+        )
+    )
+
+
+@app.command("ask")
+def ask_question(
+    query: Annotated[str, typer.Argument(help="Technical question to ask.")],
+    path: Annotated[
+        Path,
+        typer.Option("--path", "-p", help="Target project root directory."),
+    ] = Path("."),
+    entity: Annotated[
+        str | None,
+        typer.Option("--entity", "-e", help="Selected component or entity."),
+    ] = None,
+    artifact: Annotated[
+        str | None,
+        typer.Option("--artifact", help="Selected artifact path."),
+    ] = None,
+    run_id: Annotated[
+        str | None,
+        typer.Option("--run-id", help="Active run ID context."),
+    ] = None,
+    provider: Annotated[
+        str | None,
+        typer.Option("--provider", help="Model runtime provider (gemini, openai, fake)."),
+    ] = None,
+    model: Annotated[
+        str | None,
+        typer.Option("--model", help="Model name."),
+    ] = None,
+    fake_runtime: Annotated[
+        bool,
+        typer.Option("--fake-runtime", help="Use deterministic fake runtime."),
+    ] = False,
+) -> None:
+    """Ask a contextual question bounded by project inventory, ADRs, and curated learnings."""
+    settings = Settings()
+    runtime, chosen_provider, chosen_model = _resolve_runtime(
+        provider, model, fake_runtime, settings
+    )
+    knowledge_adapter = GitKnowledgeAdapter()
+    governance = GitGovernanceAdapter()
+    inspector = SafeFilesystemInspector()
+    registry = _create_framework_registry()
+    inventory_svc = InventoryService(inspector, registry)
+
+    qa_service = ContextualQAService(
+        runtime=runtime,
+        knowledge_port=knowledge_adapter,
+        governance_port=governance,
+        inventory_service=inventory_svc,
+    )
+
+    try:
+        answer = qa_service.ask(
+            str(path.resolve()),
+            query,
+            selected_entity=entity,
+            selected_artifact=artifact,
+            current_run_id=run_id,
+            provider=chosen_provider,
+            model=chosen_model,
+        )
+    except Exception as err:
+        typer.echo(json.dumps({"error": str(err), "status": "error"}, indent=2), err=True)
+        raise typer.Exit(code=1) from err
+
+    typer.echo(json.dumps(answer.model_dump(mode="json"), indent=2))
 
 
 if __name__ == "__main__":

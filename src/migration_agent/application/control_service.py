@@ -5,7 +5,7 @@ import hashlib
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from migration_agent.domain import (
     ApplyRunPayload,
@@ -28,6 +28,7 @@ from migration_agent.ports import (
     CheckpointPort,
     EventBroadcasterPort,
     GovernancePort,
+    KnowledgePort,
     WorkspacePort,
 )
 
@@ -42,12 +43,16 @@ class ControlApiService:
         workspace_port: WorkspacePort | None = None,
         event_broadcaster: EventBroadcasterPort | None = None,
         discovery_service: Any = None,
+        knowledge_port: KnowledgePort | None = None,
+        qa_service: Any = None,
     ) -> None:
         self.checkpoint_port = checkpoint_port
         self.governance_port = governance_port
         self.workspace_port = workspace_port
         self.event_broadcaster = event_broadcaster
         self.discovery_service = discovery_service
+        self.knowledge_port = knowledge_port
+        self.qa_service = qa_service
         self._idempotency_cache: dict[str, Any] = {}
         self._event_sequence = 0
 
@@ -402,6 +407,32 @@ class ControlApiService:
 
     def get_learnings(self, target_root: Path) -> LearningsView:
         """Scan and collect curated project learnings and recorded challenges."""
+        if self.knowledge_port is not None:
+            raw_learnings = self.knowledge_port.list_learnings(str(target_root))
+            raw_challenges = self.knowledge_port.list_challenges(str(target_root))
+            return LearningsView(
+                learnings=[
+                    {
+                        "id": lrn.learning_id,
+                        "title": lrn.title,
+                        "content": (
+                            f"## {lrn.title}\n\n"
+                            f"**Findings:** {lrn.findings}\n\n"
+                            f"**Recommended Pattern:** {lrn.recommended_pattern}"
+                        ),
+                    }
+                    for lrn in raw_learnings
+                ],
+                challenges=[
+                    {
+                        "id": c.challenge_id,
+                        "title": c.title,
+                        "content": f"## {c.title}\n\n{c.description}",
+                    }
+                    for c in raw_challenges
+                ],
+            )
+
         learnings: list[dict[str, Any]] = []
         challenges: list[dict[str, Any]] = []
 
@@ -434,6 +465,33 @@ class ControlApiService:
                     continue
 
         return LearningsView(learnings=learnings, challenges=challenges)
+
+    def contextual_qa(
+        self,
+        target_root: Path,
+        query: str,
+        entity: str | None = None,
+        run_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Answer a contextual query via ContextualQAService if available, or return fallback."""
+        if self.qa_service:
+            ans = self.qa_service.ask(
+                str(target_root),
+                query,
+                selected_entity=entity,
+                current_run_id=run_id,
+            )
+            return cast(dict[str, Any], ans.model_dump(mode="json"))
+        return {
+            "query": query,
+            "answer": f"Platform at '{target_root.name}' received inquiry: '{query}'.",
+            "confidence": 1.0,
+            "citations": [],
+            "referenced_decisions": [],
+            "referenced_learnings": [],
+            "assumptions": [],
+            "follow_up_suggestions": [],
+        }
 
     def _broadcast(self, event_type: str, payload: dict[str, Any]) -> None:
         """Send an event to the broadcaster if configured."""

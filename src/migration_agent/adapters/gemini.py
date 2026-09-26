@@ -10,10 +10,17 @@ from google.genai import types
 from migration_agent.adapters.schemas import (
     AgentAnalysisOutput,
     AgentPlanningOutput,
+    AgentQAOutput,
     map_agent_output_to_domain,
     map_agent_plan_output_to_domain,
+    map_agent_qa_output_to_domain,
 )
-from migration_agent.domain import AnalysisResult, MigrationStep
+from migration_agent.domain import (
+    AnalysisResult,
+    ContextualAnswer,
+    ContextualQARequest,
+    MigrationStep,
+)
 from migration_agent.ports import (
     AgentRuntimePort,
     AnalysisRequest,
@@ -224,3 +231,57 @@ class GeminiRuntimeAdapter(AgentRuntimePort):
             raise ValueError("Gemini model returned empty planning response.")
 
         return map_agent_plan_output_to_domain(planning_output)
+
+    def ask(
+        self,
+        request: ContextualQARequest,
+    ) -> ContextualAnswer:
+        """Run contextual Q&A using Google Gemini with bounded ContextEnvelope."""
+        key = self._get_api_key()
+        client = genai.Client(api_key=key)
+
+        instructions = (
+            "You are an expert software engineering and migration assistant. "
+            "Answer the developer's technical question accurately using strictly "
+            "the provided context.\n"
+            "Rules:\n"
+            "1. Base answers on cited evidence, decisions (ADRs), and curated learnings provided.\n"
+            "2. Never hallucinate nonexistent files or APIs.\n"
+            "3. Cite concrete file paths in citations if relevant.\n"
+            "4. Be concise, direct, and technically precise."
+        )
+
+        envelope = request.envelope
+        prompt = (
+            f"Project: {envelope.project_root}\n"
+            f"Query: {envelope.query}\n"
+            f"Selected Entity: {envelope.selected_entity or 'None'}\n"
+            f"Selected Artifact: {envelope.selected_artifact or 'None'}\n"
+            f"Active Run: {envelope.current_run_id or 'None'}\n"
+            f"Decisions: {list(envelope.relevant_decisions)}\n"
+            f"Learnings: {list(envelope.relevant_learnings)}\n"
+            f"Policy Digest: {envelope.active_policy_digest or 'None'}\n"
+        )
+
+        config = types.GenerateContentConfig(
+            system_instruction=instructions,
+            response_mime_type="application/json",
+            response_schema=AgentQAOutput,
+        )
+
+        model_name = request.model or "gemini-2.5-pro"
+        response = client.models.generate_content(
+            model=model_name,
+            contents=prompt,
+            config=config,
+        )
+
+        raw_parsed = getattr(response, "parsed", None)
+        if isinstance(raw_parsed, AgentQAOutput):
+            qa_output = raw_parsed
+        elif response.text:
+            qa_output = AgentQAOutput.model_validate_json(response.text)
+        else:
+            raise ValueError("Gemini model returned empty QA response.")
+
+        return map_agent_qa_output_to_domain(qa_output, envelope.query)

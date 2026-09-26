@@ -377,5 +377,31 @@ offline verification of component discovery and transformation accuracy:
    automatically produced using `TestBed` and `HttpTestingController` (`provideHttpClientTesting()`), ensuring high
    regression test coverage right out of the box.
 
+## Phase 12 — Project Adoption, Curated Knowledge Lifecycle & Contextual Q&A
 
+### Git-Native Repository Adoption (Scenario A & B)
+1. **Separation of Greenfield vs Existing Repository Workflows**: `agent init` (Scenario A) creates `.agent/`
+   governance defaults (`manifest.json`, `policy.json`, `config.json`, `access/roles.json`) without mutating
+   application source code. `agent adopt` (Scenario B) combines deterministic filesystem discovery and cross-domain
+   dependency graph construction to generate human-readable `architecture.md` and Mermaid diagrams.
+2. **Git Working Tree Guardrail (Invariant 25)**: Repository adoption alters project state by adding governance
+   documentation; therefore, it strictly demands a clean git working tree by default to avoid losing or entangling
+   uncommitted developer changes, with an explicit `--allow-dirty` flag for developer overrides.
 
+### Curated Knowledge Lifecycle & Epistemic Status (ADR-3, ADR-7)
+1. **Epistemic Classification**: Knowledge recorded in `.agent/` is categorized into `OBSERVED` (directly witnessed
+   in code, compiler output, or test logs), `INFERRED` (deduced by LLM reasoning), and `HUMAN_CONFIRMED`
+   (verified by a human engineer).
+2. **Strict Human Approval Gate for Learnings (Invariant 16)**: To prevent recursive model hallucinations and
+   poisoning of subsequent migration steps, candidate solutions cannot automatically become institutional learnings.
+   Promotion to `.agent/learnings/` strictly requires a human identifier (`approved_by`) and human confirmation.
+3. **Transparent Markdown Frontmatter Persistence**: Challenges, solutions, learnings, and ADRs are stored as
+   Git-trackable YAML frontmatter Markdown files, ensuring transparency, version-controllability, and code review
+   compatibility.
+
+### Contextual Technical Q&A with Citation Verification
+1. **Bounded Context Envelopes**: Inquiries sent to LLM runtimes are strictly bounded to target repository metadata,
+   governance policies, ADRs, curated learnings, and eligible files via `ContextEnvelope`.
+2. **Post-Hoc Citation Verification**: LLM responses frequently hallucinate plausible-looking files.
+   `ContextualQAService` audits all returned citations against eligible repository paths, stripping invalid citations
+   and recording explicit citation warnings.

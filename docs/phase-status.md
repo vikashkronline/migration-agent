@@ -474,6 +474,43 @@ uv run migration-agent eval tests/fixtures/angularjs-realworld-dashboard
 Exit code 0; status: PASSED, precision: 1.00, recall: 1.00, f1_score: 1.00 in 15 ms.
 ```
 
+## Phase 12 — Complete
 
+Scope: Project Adoption, Curated Knowledge Lifecycle & Contextual Q&A:
+- Git-Native Project Adoption & Initialization:
+  - Scenario A (`migration-agent init`): Initializes greenfield target repositories with a complete `.agent/` directory structure (`manifest.json`, `policy.json`, `config.json`, `access/roles.json`, and knowledge subdirectories).
+  - Scenario B (`migration-agent adopt`): Adopts existing repositories via read-only inspection, generating deterministic technology stack inventories, Architecture Overview documentation (`architecture.md`), and cross-domain Mermaid dependency graphs (`cross-domain-graph.md`). Enforces Invariant 25 (requires clean git working tree unless `--allow-dirty` is explicitly provided).
+- Curated Knowledge Lifecycle (ADR-3, ADR-7, Invariant 16):
+  - Epistemic status tracking (`EpistemicStatus`: `OBSERVED`, `INFERRED`, `HUMAN_CONFIRMED`).
+  - Domain models: `ChallengeRecord`, `CandidateSolution`, `CuratedLearning`, `ArchitecturalDecisionRecord`.
+  - `KnowledgePort` and `GitKnowledgeAdapter`: Human-readable Markdown frontmatter storage in `.agent/challenges/`, `.agent/solutions/`, `.agent/learnings/`, and `.agent/decisions/`.
+  - `KnowledgeService`: Manages challenge recording, solution proposal, decision recording, and promotes candidate solutions to curated learnings strictly requiring human approval (`approved_by`, Invariant 16).
+  - CLI subcommands: `migration-agent challenge`, `solution`, `learning`, `decision`.
+- Contextual Technical Q&A Engine:
+  - `ContextEnvelope`, `ContextualQARequest`, and `ContextualAnswer` domain models.
+  - `ContextualQAService`: Gathers project context (manifest, policy digest, ADRs, curated learnings, eligible files, evidence references) and executes bounded LLM inquiries. Verifies citations against target repository files to detect and reject hallucinated file paths.
+  - Runtime adapters: Deterministic `FakeAgentRuntime`, `OpenAIAgentsRuntime`, and `GeminiAgentRuntime` all implement `ask()` protocol.
+  - Control API integration: `POST /api/v1/contextual-qa` and `POST /api/v1/ask` with loopback security, CSRF protection, and session authentication.
+  - CLI command: `migration-agent ask <query> [--entity <path>] [--run-id <id>]`.
 
+Completed on 2026-09-27 using `uv` and an isolated CPython 3.12.14 environment. The required evidence is:
 
+```text
+uv sync --all-groups
+Resolved 69 packages; checked 68 packages.
+
+uv run pytest
+291 passed, 2 skipped in 23.13s
+
+uv run ruff check .
+All checks passed!
+
+uv run ruff format --check .
+158 files already formatted.
+
+uv run mypy src
+Success: no issues found in 74 source files
+
+uv run migration-agent doctor
+Exit code 0; emitted schema-versioned JSON with status "ok" checking google-genai, openai-agents, pydantic, pydantic-settings, typer.
+```

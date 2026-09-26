@@ -4,7 +4,13 @@ from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from migration_agent.domain import AnalysisResult, MigrationStep, ProjectInventory
+from migration_agent.domain import (
+    AnalysisResult,
+    ContextualAnswer,
+    ContextualQARequest,
+    MigrationStep,
+    ProjectInventory,
+)
 
 
 class AnalysisRequest(BaseModel):
@@ -55,3 +61,9 @@ class AgentRuntimePort(Protocol):
         request: PlanningRequest,
     ) -> list[MigrationStep]:
         """Generate candidate migration steps from analysis and inventory."""
+
+    def ask(
+        self,
+        request: ContextualQARequest,
+    ) -> ContextualAnswer:
+        """Answer a contextual technical question using bounded repository context."""

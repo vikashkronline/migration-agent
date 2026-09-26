@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from migration_agent.domain import (
     AnalysisFinding,
     AnalysisResult,
+    ContextualAnswer,
     EvidenceReference,
     FindingCategory,
     FindingSeverity,
@@ -336,4 +337,58 @@ def map_agent_diagnosis_output_to_domain(
         suggested_file=output.suggested_file,
         diagnostic_details=output.diagnostic_details,
         suggested_fix_summary=output.suggested_fix_summary,
+    )
+
+
+class AgentQAOutput(BaseModel):
+    """Structured QA output schema for agent runtime."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    answer: str = Field(description="Comprehensive evidence-based response to query.")
+    confidence: float = Field(ge=0.0, le=1.0, default=1.0, description="Confidence score.")
+    citations: tuple[AgentEvidenceReference, ...] = Field(
+        default=(),
+        description="Citations to repository files.",
+    )
+    referenced_decisions: tuple[str, ...] = Field(
+        default=(),
+        description="IDs of referenced ADRs.",
+    )
+    referenced_learnings: tuple[str, ...] = Field(
+        default=(),
+        description="IDs of referenced learnings.",
+    )
+    assumptions: tuple[str, ...] = Field(
+        default=(),
+        description="Underlying assumptions made.",
+    )
+    follow_up_suggestions: tuple[str, ...] = Field(
+        default=(),
+        description="Suggested next actions or queries.",
+    )
+
+
+def map_agent_qa_output_to_domain(
+    output: AgentQAOutput,
+    query: str,
+) -> ContextualAnswer:
+    """Translate agent QA output to domain ContextualAnswer."""
+    return ContextualAnswer(
+        query=query,
+        answer=output.answer,
+        confidence=output.confidence,
+        citations=tuple(
+            EvidenceReference(
+                path=c.path,
+                description=c.description,
+                line_number=c.line_number,
+                sample=c.sample,
+            )
+            for c in output.citations
+        ),
+        referenced_decisions=output.referenced_decisions,
+        referenced_learnings=output.referenced_learnings,
+        assumptions=output.assumptions,
+        follow_up_suggestions=output.follow_up_suggestions,
     )

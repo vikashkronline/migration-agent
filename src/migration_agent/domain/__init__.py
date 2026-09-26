@@ -78,6 +78,16 @@ from migration_agent.domain.inventory import (
     RepositoryDescriptor,
     RepositorySnapshot,
 )
+from migration_agent.domain.knowledge import (
+    ArchitecturalDecisionRecord,
+    CandidateSolution,
+    ChallengeRecord,
+    ChallengeStatus,
+    CuratedLearning,
+    DecisionStatus,
+    EpistemicStatus,
+    SolutionStatus,
+)
 from migration_agent.domain.models import MigrationRequest
 from migration_agent.domain.planning import (
     ApprovalSignature,
@@ -88,6 +98,11 @@ from migration_agent.domain.planning import (
     StepRisk,
     compute_plan_digest,
     verify_approval,
+)
+from migration_agent.domain.qa import (
+    ContextEnvelope,
+    ContextualAnswer,
+    ContextualQARequest,
 )
 from migration_agent.domain.redaction import RedactionPolicy
 from migration_agent.domain.run_state import (
@@ -137,25 +152,35 @@ __all__ = [
     "ApplyStatus",
     "ApprovalSignature",
     "ApprovePlanPayload",
+    "ArchitecturalDecisionRecord",
     "AssuranceLevel",
     "AuthorityKey",
     "BudgetExhaustedError",
     "BudgetLimit",
     "BudgetSummary",
     "BudgetTracker",
+    "CandidateSolution",
+    "ChallengeRecord",
+    "ChallengeStatus",
     "ChangeSet",
+    "ContextEnvelope",
+    "ContextualAnswer",
+    "ContextualQARequest",
     "ControlApiError",
     "ControlApiErrorCode",
     "ControlApiResponse",
     "CrossDomainDependencyGraph",
     "CrossDomainEdge",
     "CrossDomainNode",
+    "CuratedLearning",
+    "DecisionStatus",
     "Dependency",
     "DependencyRelation",
     "DependencyScope",
     "DiffFileView",
     "DiffReviewView",
     "DoctorView",
+    "EpistemicStatus",
     "EvaluationBenchmark",
     "EvaluationMetric",
     "EvaluationResult",
@@ -213,6 +238,7 @@ __all__ = [
     "ServiceMethod",
     "SessionTokenInfo",
     "SignatureVerificationResult",
+    "SolutionStatus",
     "SourceComponentBundle",
     "SourceServiceBundle",
     "SpecialistEvaluationMetric",
