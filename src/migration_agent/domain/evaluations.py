@@ -80,6 +80,31 @@ class EvaluationBenchmark(BaseModel):
             min_recall=0.8,
         )
 
+    @classmethod
+    def default_angularjs_dashboard(
+        cls, fixture_path: str = "tests/fixtures/angularjs-realworld-dashboard"
+    ) -> "EvaluationBenchmark":
+        """Pre-configured ground-truth benchmark for the AngularJS real-world dashboard fixture."""
+        return cls(
+            benchmark_id="bm-angularjs-realworld-dashboard",
+            name="AngularJS Real-World Dashboard Benchmark",
+            description=(
+                "Evaluates multi-component and service extraction accuracy on AngularJS "
+                "enterprise dashboard fixture."
+            ),
+            target_fixture=fixture_path,
+            expected_components=("user-profile", "activity-feed"),
+            expected_files=(
+                "src/app/components/user-profile/user-profile.component.ts",
+                "src/app/components/user-profile/user-profile.component.html",
+                "src/app/components/activity-feed/activity-feed.component.ts",
+                "src/app/components/activity-feed/activity-feed.component.html",
+                "src/app/services/user-data-service.service.ts",
+            ),
+            min_precision=0.8,
+            min_recall=0.8,
+        )
+
 
 class EvaluationResult(BaseModel):
     """Immutable outcome of executing an evaluation benchmark."""

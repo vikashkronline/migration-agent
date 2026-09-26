@@ -33,7 +33,10 @@ from migration_agent.ports.transformation import (
     ComponentExtractorPort,
     ComponentRendererPort,
     IntermediateComponent,
+    ServiceExtractorPort,
+    ServiceRendererPort,
 )
+from migration_agent.ports.trust import SignatureVerifierPort, TrustStorePort
 from migration_agent.ports.workspace import WorkspacePort
 
 __all__ = [
@@ -60,6 +63,10 @@ __all__ = [
     "PlanningRequest",
     "ProjectManifest",
     "ProjectPolicy",
+    "ServiceExtractorPort",
+    "ServiceRendererPort",
+    "SignatureVerifierPort",
     "SpecialistRuntimePort",
+    "TrustStorePort",
     "WorkspacePort",
 ]

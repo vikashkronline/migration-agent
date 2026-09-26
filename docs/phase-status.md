@@ -426,4 +426,54 @@ A live UI smoke test confirmed:
 4. Non-loopback origin requests are rejected with 403 Forbidden, and mutating state changes require valid CSRF and session tokens.
 
 
+## Phase 11 — Complete
+
+Scope: Production Hardening and Real-World Migration Target (AngularJS 1.x to Modern Angular 17+ Standalone):
+- Production Hardening:
+  - Mode A Cryptographic Trust Store (`~/.agent-platform/trust/<project-id>.json`) adhering to ADR-2:
+    - `AuthorityKey`, `RepositoryBinding`, `TrustRecord`, and `SignatureVerificationResult` domain models.
+    - `LocalTrustStoreAdapter` managing authority public keys, repository bindings, and trust records out-of-band in developer user-data directory.
+    - `CryptoSignatureVerifierAdapter` supporting Ed25519 and HMAC-SHA256 signature verification over RFC 8785 canonical metadata digests.
+    - CLI approval integration (`migration-agent plan approve`) supporting `--signature`, `--key-id`, and `--trust-dir` with fallback to Mode B/C.
+  - Containerized Command Execution Sandbox:
+    - `ContainerizedCommandRunner` wrapping command execution in container engines (Docker/Podman) with strict command allowlists, read-only root volume mounts, dropped Linux capabilities, metacharacter defense, and graceful local runner fallback.
+- Real-World Migration Target:
+  - Real-world enterprise multi-file AngularJS dashboard fixture (`tests/fixtures/angularjs-realworld-dashboard`) containing directives (`user-profile`), components (`activity-feed`), services (`user-data`), templates, and CSS.
+  - AST / regex transformation pipeline:
+    - `AngularJsServiceExtractor` and `AngularStandaloneServiceRenderer` mapping `$http` calls to `HttpClient`, `Observable`, signals, and generating Jasmine unit test specs with `HttpTestingController`.
+    - `AngularJsDirectiveExtractor` and `AngularStandaloneComponentRenderer` extracting components, directives, isolate scopes, bindings, and translating legacy templates to Modern Angular 17+ Standalone.
+  - Strict Angular standards enforcement:
+    - `standalone: true`, `ChangeDetectionStrategy.OnPush`, `@if` / `@for (...; track ...)` modern control flow syntax.
+    - Angular Signals (`signal()`, `computed()`) and `inject(HttpClient)` dependency injection.
+    - Modern Bootstrap 5 utility classes (`ms-auto`, `me-auto`, `d-none d-sm-block`, `col-*`) replacing Bootstrap 3/4 legacy classes (`pull-right`, `pull-left`, `hidden-xs`, `col-xs-*`).
+- Offline Benchmark Evaluation:
+  - Benchmark definition `bm-angularjs-realworld-dashboard` verifying 100% precision, recall, and F1 score against real-world AngularJS codebases offline.
+
+Completed on 2026-09-26 using `uv` and an isolated CPython 3.12.14 environment. The required evidence is:
+
+```text
+uv sync --all-groups
+Resolved 69 packages; checked 68 packages.
+
+uv run pytest
+279 passed, 2 skipped in 24.49s
+
+uv run ruff check .
+All checks passed!
+
+uv run ruff format --check .
+147 files already formatted.
+
+uv run mypy src
+Success: no issues found in 67 source files
+
+uv run migration-agent doctor
+Exit code 0; emitted schema-versioned JSON with status "ok" checking google-genai, openai-agents, pydantic, pydantic-settings, typer.
+
+uv run migration-agent eval tests/fixtures/angularjs-realworld-dashboard
+Exit code 0; status: PASSED, precision: 1.00, recall: 1.00, f1_score: 1.00 in 15 ms.
+```
+
+
+
 

@@ -19,6 +19,7 @@ from migration_agent.adapters import (
     AnalysisReportWriter,
     AngularAdapter,
     AngularJsDirectiveAdapter,
+    CryptoSignatureVerifierAdapter,
     EmberClassicAdapter,
     FakeAgentRuntime,
     FakeCommandRunner,
@@ -27,6 +28,7 @@ from migration_agent.adapters import (
     GitGovernanceAdapter,
     InMemoryEventBroadcaster,
     InventoryReportWriter,
+    LocalTrustStoreAdapter,
     LocalWorkspaceAdapter,
     LoopbackControlServer,
     OpenAIAgentsRuntimeAdapter,
@@ -922,6 +924,29 @@ def plan_approve_command(
             help="Custom directory for SQLite checkpoints and audit log.",
         ),
     ] = None,
+    signature: Annotated[
+        str | None,
+        typer.Option(
+            "--signature",
+            "-s",
+            help="Cryptographic signature string for Mode A approval.",
+        ),
+    ] = None,
+    key_id: Annotated[
+        str | None,
+        typer.Option(
+            "--key-id",
+            "-k",
+            help="Trusted Authority Key ID or fingerprint.",
+        ),
+    ] = None,
+    trust_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--trust-dir",
+            help="Custom directory for trusted authority keys (~/.agent-platform/trust/).",
+        ),
+    ] = None,
 ) -> None:
     """Approve a migration plan with cryptographic digest binding."""
     settings = Settings()
@@ -969,13 +994,74 @@ def plan_approve_command(
         governance=governance,
     )
 
+    authority_key = None
+    signature_verifier = None
+
+    if level == AssuranceLevel.MODE_A:
+        if not signature:
+            typer.echo(
+                json.dumps(
+                    {
+                        "error": "Mode A approval requires --signature (-s).",
+                        "status": "error",
+                    },
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
+                err=True,
+            )
+            raise typer.Exit(code=2)
+
+        trust_store = LocalTrustStoreAdapter(trust_root=trust_dir)
+        # Identify project_id from directory or default
+        project_id = Path(project_root).resolve().name if project_root else "default"
+        record = trust_store.load_trust_record(project_id)
+        if record is None:
+            typer.echo(
+                json.dumps(
+                    {
+                        "error": (
+                            f"No trust record found for project '{project_id}' in trust store."
+                        ),
+                        "status": "error",
+                    },
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
+                err=True,
+            )
+
+            raise typer.Exit(code=2)
+
+        search_key = key_id or actor
+        authority_key = record.find_key(search_key)
+        if authority_key is None:
+            typer.echo(
+                json.dumps(
+                    {
+                        "error": f"Authority key '{search_key}' not found in project trust record.",
+                        "status": "error",
+                    },
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
+                err=True,
+            )
+            raise typer.Exit(code=2)
+
+        signature_verifier = CryptoSignatureVerifierAdapter()
+
     try:
         approved_plan = service.approve_plan(
             plan_id,
             actor=actor,
             assurance_level=level,
             project_root=str(project_root) if project_root else None,
+            custom_signature=signature,
+            authority_key=authority_key,
+            signature_verifier=signature_verifier,
         )
+
         sig = approved_plan.approval
         typer.echo(
             json.dumps(
@@ -2131,7 +2217,11 @@ def eval_command(
         )
         raise typer.Exit(code=2)
 
-    if "angularjs" in str(fixture_path).lower():
+    if "dashboard" in str(fixture_path).lower():
+        benchmark = EvaluationBenchmark.default_angularjs_dashboard(str(fixture_path)).model_copy(
+            update={"min_precision": min_precision, "min_recall": min_recall}
+        )
+    elif "angularjs" in str(fixture_path).lower():
         benchmark = EvaluationBenchmark.default_angularjs_mini(str(fixture_path)).model_copy(
             update={"min_precision": min_precision, "min_recall": min_recall}
         )
@@ -2139,6 +2229,7 @@ def eval_command(
         benchmark = EvaluationBenchmark.default_ember_mini(str(fixture_path)).model_copy(
             update={"min_precision": min_precision, "min_recall": min_recall}
         )
+
     inventory_service = InventoryService(
         filesystem=SafeFilesystemInspector(),
         frameworks=_create_framework_registry(),

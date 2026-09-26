@@ -7,7 +7,9 @@ from typing import cast
 
 from migration_agent.adapters.transforms import (
     AngularJsDirectiveExtractor,
+    AngularJsServiceExtractor,
     AngularStandaloneComponentRenderer,
+    AngularStandaloneServiceRenderer,
     EmberClassicComponentExtractor,
 )
 from migration_agent.domain import (
@@ -23,6 +25,8 @@ from migration_agent.domain import (
 from migration_agent.ports import (
     ComponentExtractorPort,
     ComponentRendererPort,
+    ServiceExtractorPort,
+    ServiceRendererPort,
 )
 
 _ANGULAR_STANDALONE_PATTERN = re.compile(r"\bstandalone\s*:\s*true\b")
@@ -271,6 +275,9 @@ class AngularJsDirectiveAdapter:
     def get_extractor(self) -> ComponentExtractorPort | None:
         return AngularJsDirectiveExtractor()
 
+    def get_service_extractor(self) -> ServiceExtractorPort | None:
+        return AngularJsServiceExtractor()
+
     def get_renderer(self) -> ComponentRendererPort | None:
         return None
 
@@ -392,3 +399,6 @@ class AngularAdapter:
 
     def get_renderer(self) -> ComponentRendererPort | None:
         return AngularStandaloneComponentRenderer()
+
+    def get_service_renderer(self) -> ServiceRendererPort | None:
+        return AngularStandaloneServiceRenderer()

@@ -3,11 +3,18 @@
 import re
 from pathlib import Path
 
-from migration_agent.domain.frameworks import SourceComponentBundle
+from migration_agent.domain.frameworks import (
+    IntermediateService,
+    ServiceMethod,
+    SourceComponentBundle,
+    SourceServiceBundle,
+)
 from migration_agent.ports import (
     ComponentExtractorPort,
     ComponentRendererPort,
     IntermediateComponent,
+    ServiceExtractorPort,
+    ServiceRendererPort,
 )
 
 
@@ -117,31 +124,55 @@ class EmberClassicComponentExtractor(ComponentExtractorPort):
 
 
 class AngularJsDirectiveExtractor(ComponentExtractorPort):
-    """Extracts intermediate component representation from AngularJS directive definitions."""
+    """Extracts intermediate component representation from AngularJS directives and components."""
 
     def discover_components(self, source_root: Path) -> tuple[SourceComponentBundle, ...]:
-        """Discover AngularJS directives in the repository and matching templates/styles."""
+        """Discover AngularJS directives/components and matching templates/styles."""
         root = Path(source_root).resolve()
         bundles: list[SourceComponentBundle] = []
 
-        # Find .directive.js or .directive.ts files anywhere in source tree
+        # Find .directive.js or .component.js files anywhere in source tree
         directive_files = sorted(
             [
                 p
                 for p in root.rglob("*.js")
-                if p.name.endswith(".directive.js")
-                or (".directive" in p.name and not p.name.endswith(".spec.js"))
+                if (
+                    p.name.endswith(".directive.js")
+                    or p.name.endswith(".component.js")
+                    or (".directive" in p.name and not p.name.endswith(".spec.js"))
+                    or (
+                        ".component" in p.name
+                        and not p.name.endswith(".spec.js")
+                        and not p.name.endswith(".component.ts")
+                    )
+                )
             ]
         )
 
         for js_path in directive_files:
             content = js_path.read_text(encoding="utf-8")
-            # Extract directive name from .directive('name', ...)
-            dir_match = re.search(r"\.directive\(\s*['\"]([a-zA-Z0-9_-]+)['\"]", content)
-            raw_name = dir_match.group(1) if dir_match else js_path.stem.replace(".directive", "")
+            # Extract directive/component name
+            dir_match = re.search(
+                r"\.(?:directive|component)\(\s*['\"]([a-zA-Z0-9_-]+)['\"]", content
+            )
+            raw_name = (
+                dir_match.group(1)
+                if dir_match
+                else (
+                    js_path.name.replace(".directive.js", "")
+                    .replace(".component.js", "")
+                    .replace(".directive", "")
+                    .replace(".component", "")
+                )
+            )
             comp_name = _to_pascal_case(raw_name)
 
-            base_stem = js_path.name.replace(".directive.js", "").replace(".directive", "")
+            base_stem = (
+                js_path.name.replace(".directive.js", "")
+                .replace(".component.js", "")
+                .replace(".directive", "")
+                .replace(".component", "")
+            )
             parent_dir = js_path.parent
 
             # Look for template file (.template.html or .html)
@@ -152,6 +183,7 @@ class AngularJsDirectiveExtractor(ComponentExtractorPort):
                 parent_dir / f"{base_stem}.template.html",
                 parent_dir / f"{base_stem}.html",
                 root / "src" / f"{base_stem}.template.html",
+                root / "src" / f"{base_stem}.html",
             ]
             for tpl_path in tpl_candidates:
                 if tpl_path.is_file():
@@ -164,6 +196,7 @@ class AngularJsDirectiveExtractor(ComponentExtractorPort):
             css_candidates = [
                 parent_dir / f"{base_stem}.css",
                 root / "src" / f"{base_stem}.css",
+                root / "src" / "dashboard.css",
             ]
             for css_path in css_candidates:
                 if css_path.is_file():
@@ -189,17 +222,21 @@ class AngularJsDirectiveExtractor(ComponentExtractorPort):
         template_source: str = "",
         style_source: str = "",
     ) -> IntermediateComponent:
-        """Parse AngularJS directive code and template into IntermediateComponent."""
-        # Detect directive name
-        dir_match = re.search(r"\.directive\(\s*['\"]([a-zA-Z0-9_-]+)['\"]", component_source)
+        """Parse AngularJS directive/component code and template into IntermediateComponent."""
+        # Detect directive or component name
+        dir_match = re.search(
+            r"\.(?:directive|component)\(\s*['\"]([a-zA-Z0-9_-]+)['\"]", component_source
+        )
         raw_name = dir_match.group(1) if dir_match else "userBadge"
         name = _to_pascal_case(raw_name)
         kebab_name = _to_kebab_case(raw_name)
         tag_name = f"app-{kebab_name}"
 
-        # Detect inputs from isolate scope bindings e.g. scope: { name: '@', role: '@' }
+        # Detect inputs from isolate scope or bindings (e.g. scope: { name: '@' })
         inputs: list[str] = []
-        scope_match = re.search(r"scope\s*:\s*\{([^}]+)\}", component_source, re.DOTALL)
+        scope_match = re.search(
+            r"(?:scope|bindings)\s*:\s*\{([^}]+)\}", component_source, re.DOTALL
+        )
         if scope_match:
             scope_body = scope_match.group(1)
             for item in re.finditer(r"([a-zA-Z0-9_]+)\s*:\s*['\"]([@=&<])['\"]", scope_body):
@@ -207,16 +244,16 @@ class AngularJsDirectiveExtractor(ComponentExtractorPort):
                 if prop not in inputs:
                     inputs.append(prop)
 
-        # Detect template expressions e.g. {{name}}
-        for tm in re.finditer(r"\{\{([a-zA-Z0-9_]+)\}\}", template_source):
+        # Detect template expressions e.g. {{name}} or {{$ctrl.name}} or {{vm.name}}
+        for tm in re.finditer(r"\{\{(?:vm\.|\$ctrl\.|ctrl\.)?([a-zA-Z0-9_]+)\}\}", template_source):
             var_name = tm.group(1)
             if var_name not in inputs:
                 inputs.append(var_name)
 
-        # Detect state properties e.g. scope.isExpanded = false;
+        # Detect state properties e.g. scope.isExpanded = false; or $ctrl.isExpanded = false;
         state_properties: list[str] = []
         state_pattern = re.compile(
-            r"(?:\$scope|scope)\.([a-zA-Z0-9_]+)\s*=\s*(false|true|['\"].*?['\"]|\d+)\s*;",
+            r"(?:\$scope|scope|vm|\$ctrl|ctrl)\.([a-zA-Z0-9_]+)\s*=\s*(false|true|['\"].*?['\"]|\d+)\s*;",
             re.MULTILINE,
         )
         for sm in state_pattern.finditer(component_source):
@@ -224,10 +261,10 @@ class AngularJsDirectiveExtractor(ComponentExtractorPort):
             if prop_name not in state_properties:
                 state_properties.append(prop_name)
 
-        # Detect action methods e.g. scope.toggleDetails = function()
+        # Detect action methods e.g. scope.toggleDetails = function() or $ctrl.toggle = function()
         methods: list[str] = []
         method_pattern = re.compile(
-            r"(?:\$scope|scope)\.([a-zA-Z0-9_]+)\s*=\s*function",
+            r"(?:\$scope|scope|vm|\$ctrl|ctrl)\.([a-zA-Z0-9_]+)\s*=\s*function",
             re.MULTILINE,
         )
         for mm in method_pattern.finditer(component_source):
@@ -244,6 +281,104 @@ class AngularJsDirectiveExtractor(ComponentExtractorPort):
             template_raw=template_source,
             style_raw=style_source,
             metadata={"source_framework": "angularjs-directive"},
+        )
+
+
+class AngularJsServiceExtractor(ServiceExtractorPort):
+    """Extracts intermediate service representation from AngularJS service/factory definitions."""
+
+    def discover_services(self, source_root: Path) -> tuple[SourceServiceBundle, ...]:
+        """Discover AngularJS service files (*.service.js, *.factory.js)."""
+        root = Path(source_root).resolve()
+        bundles: list[SourceServiceBundle] = []
+
+        service_files = sorted(
+            [
+                p
+                for p in root.rglob("*.js")
+                if (p.name.endswith(".service.js") or p.name.endswith(".factory.js"))
+                and not p.name.endswith(".spec.js")
+            ]
+        )
+
+        for js_path in service_files:
+            content = js_path.read_text(encoding="utf-8")
+            match = re.search(r"\.(?:service|factory)\(\s*['\"]([a-zA-Z0-9_-]+)['\"]", content)
+            raw_name = (
+                match.group(1)
+                if match
+                else js_path.name.replace(".service.js", "").replace(".factory.js", "")
+            )
+            svc_name = _to_pascal_case(raw_name)
+
+            bundles.append(
+                SourceServiceBundle(
+                    service_name=svc_name,
+                    source_files=(str(js_path.relative_to(root)).replace("\\", "/"),),
+                    service_source=content,
+                )
+            )
+
+        return tuple(bundles)
+
+    def extract_service(self, service_source: str) -> IntermediateService:
+        """Parse AngularJS service/factory source code into IntermediateService."""
+        match = re.search(r"\.(?:service|factory)\(\s*['\"]([a-zA-Z0-9_-]+)['\"]", service_source)
+        raw_name = match.group(1) if match else "UserDataService"
+        svc_name = _to_pascal_case(raw_name)
+        if not svc_name.endswith("Service"):
+            svc_name = f"{svc_name}Service"
+
+        methods: list[ServiceMethod] = []
+
+        # Find method declarations e.g. this.getUsers = function(...) or self.update = function(...)
+        method_pattern = re.compile(
+            r"(?:this|self)\.([a-zA-Z0-9_]+)\s*=\s*function\s*\(([^)]*)\)\s*\{([^}]+)\}",
+            re.DOTALL,
+        )
+
+        for m in method_pattern.finditer(service_source):
+            method_name = m.group(1)
+            raw_params = m.group(2).strip()
+            body = m.group(3)
+
+            params = tuple(
+                p.strip() for p in raw_params.split(",") if p.strip() and p.strip() != "$http"
+            )
+
+            # Detect http verb and endpoint
+            http_verb = "GET"
+            endpoint = ""
+            verb_match = re.search(
+                r"\$http\.(get|post|put|delete)\(\s*(['\"`].*?['\"`]|[a-zA-Z0-9_]+)",
+                body,
+            )
+            if verb_match:
+                http_verb = verb_match.group(1).upper()
+                raw_ep = verb_match.group(2).strip("'\"`")
+                endpoint = raw_ep
+            elif "$http(" in body:
+                method_match = re.search(r"method\s*:\s*['\"]([A-Z]+)['\"]", body)
+                if method_match:
+                    http_verb = method_match.group(1).upper()
+                url_match = re.search(r"url\s*:\s*['\"](.*?)['\"]", body)
+                if url_match:
+                    endpoint = url_match.group(1)
+
+            methods.append(
+                ServiceMethod(
+                    name=method_name,
+                    http_method=http_verb,
+                    endpoint=endpoint,
+                    parameters=params,
+                    return_type="Observable<any>",
+                )
+            )
+
+        return IntermediateService(
+            name=svc_name,
+            methods=tuple(methods),
+            metadata={"source_framework": "angularjs-service"},
         )
 
 
@@ -360,6 +495,133 @@ class AngularStandaloneComponentRenderer(ComponentRendererPort):
             f"    expect(component.{state_prop}()).toBeFalse();\n"
             f"    component.{toggle_method}();\n"
             f"    expect(component.{state_prop}()).toBeTrue();\n"
+            "  });\n"
+            "});\n"
+        )
+
+    def migrate_template(self, template_raw: str, component: IntermediateComponent) -> str:
+        """Migrate legacy AngularJS template directives to Angular 17+ and Bootstrap 5."""
+        if not template_raw.strip():
+            return self.render_template_html(component)
+
+        res = template_raw
+        # 1. Bootstrap 3/4 to Bootstrap 5
+        res = re.sub(r"\bpull-right\b", "ms-auto", res)
+        res = re.sub(r"\bpull-left\b", "me-auto", res)
+        res = re.sub(r"\bhidden-xs\b", "d-none d-sm-block", res)
+        res = re.sub(r"\bcol-xs-([0-9]+)\b", r"col-\1", res)
+
+        # 2. ng-click to (click)
+        res = re.sub(
+            r'ng-click=["\'](?:vm\.|\$ctrl\.|ctrl\.)?([a-zA-Z0-9_]+)\((.*?)\)["\']',
+            r'(click)="\1(\2)"',
+            res,
+        )
+        res = re.sub(
+            r'ng-click=["\'](?:vm\.|\$ctrl\.|ctrl\.)?([a-zA-Z0-9_]+)["\']',
+            r'(click)="\1()"',
+            res,
+        )
+
+        # 3. ng-if and ng-show to @if
+        res = re.sub(
+            r'<([a-zA-Z0-9_-]+)\s+([^>]*?)ng-(?:if|show)=["\']'
+            r'(?:vm\.|\$ctrl\.|ctrl\.)?([a-zA-Z0-9_]+)["\']([^>]*)>',
+            r"@if (\3()) {\n  <\1 \2\4>",
+            res,
+        )
+
+        # 4. ng-repeat to @for
+        def _replace_ng_repeat(m: re.Match[str]) -> str:
+            track = m.group(5) or f"{m.group(3)}.id"
+            return (
+                f"@for ({m.group(3)} of {m.group(4)}(); track {track}) {{\n"
+                f"  <{m.group(1)} {m.group(2)}{m.group(6)}>"
+            )
+
+        res = re.sub(
+            r'<([a-zA-Z0-9_-]+)\s+([^>]*?)ng-repeat=["\']([a-zA-Z0-9_]+)\s+in\s+'
+            r'(?:vm\.|\$ctrl\.|ctrl\.)?([a-zA-Z0-9_]+)(?:\s+track\s+by\s+([a-zA-Z0-9_.]+))?["\']([^>]*)>',
+            _replace_ng_repeat,
+            res,
+        )
+
+        return res
+
+
+class AngularStandaloneServiceRenderer(ServiceRendererPort):
+    """Renders modern Angular 17+ injectable services using inject(HttpClient)."""
+
+    def render_service_ts(self, service: IntermediateService) -> str:
+        """Render standalone Angular @Injectable service."""
+        methods_code: list[str] = []
+        for method in service.methods:
+            param_sig = ", ".join(f"{p}: any" for p in method.parameters)
+            verb = method.http_method.lower()
+            ep = method.endpoint if method.endpoint else f"/api/v1/{method.name.lower()}"
+
+            if verb in ("get", "delete"):
+                body = f"return this.http.{verb}<any>('{ep}');"
+            else:
+                payload_arg = method.parameters[-1] if method.parameters else "payload"
+                body = f"return this.http.{verb}<any>('{ep}', {payload_arg});"
+
+            methods_code.append(
+                f"  {method.name}({param_sig}): Observable<any> {{\n    {body}\n  }}"
+            )
+
+        methods_block = "\n\n".join(methods_code)
+
+        return (
+            "import { HttpClient } from '@angular/common/http';\n"
+            "import { Injectable, inject } from '@angular/core';\n"
+            "import { Observable } from 'rxjs';\n\n"
+            "@Injectable({\n"
+            "  providedIn: 'root',\n"
+            "})\n"
+            f"export class {service.name} {{\n"
+            "  private readonly http = inject(HttpClient);\n\n"
+            f"{methods_block}\n"
+            "}\n"
+        )
+
+    def render_spec_ts(self, service: IntermediateService) -> str:
+        """Render Jasmine unit test spec with HttpTestingController."""
+        first_method = service.methods[0].name if service.methods else "getUsers"
+        first_verb = service.methods[0].http_method if service.methods else "GET"
+        first_ep = service.methods[0].endpoint if service.methods else "/api/v1/users"
+
+        return (
+            "import { provideHttpClient } from '@angular/common/http';\n"
+            "import {\n"
+            "  HttpTestingController,\n"
+            "  provideHttpClientTesting,\n"
+            "} from '@angular/common/http/testing';\n"
+            "import { TestBed } from '@angular/core/testing';\n"
+            f"import {{ {service.name} }} from './{_to_kebab_case(service.name)}.service';\n\n"
+            f"describe('{service.name}', () => {{\n"
+            f"  let service: {service.name};\n"
+            "  let httpMock: HttpTestingController;\n\n"
+            "  beforeEach(() => {\n"
+            "    TestBed.configureTestingModule({\n"
+            "      providers: [\n"
+            f"        {service.name},\n"
+            "        provideHttpClient(),\n"
+            "        provideHttpClientTesting(),\n"
+            "      ],\n"
+            "    });\n"
+            f"    service = TestBed.inject({service.name});\n"
+            "    httpMock = TestBed.inject(HttpTestingController);\n"
+            "  });\n\n"
+            "  afterEach(() => {\n"
+            "    httpMock.verify();\n"
+            "  });\n\n"
+            "  it('should be created and execute request', () => {\n"
+            "    expect(service).toBeTruthy();\n"
+            f"    service.{first_method}().subscribe();\n"
+            f"    const req = httpMock.expectOne('{first_ep}');\n"
+            f"    expect(req.request.method).toBe('{first_verb}');\n"
+            "    req.flush({});\n"
             "  });\n"
             "});\n"
         )

@@ -340,4 +340,42 @@ offline verification of component discovery and transformation accuracy:
    bundling the UI static directory and SQLite migration schemas while cloaking proprietary agent prompt templates using
    reversible XOR masking to deter casual inspection in distributed binaries.
 
+## Phase 11 — Production Hardening & Real-World Migration Target
+
+### Mode A Cryptographic Trust Store (ADR-2)
+1. **Out-of-Band Trust Hierarchy**: Storing authority public keys and project repository bindings in the developer's
+   user-data directory (`~/.agent-platform/trust/<project-id>.json`) prevents malicious repositories from self-authorizing
+   arbitrary migrations or bypassing safety policies through in-repo configuration tampering.
+2. **Signature Binding over RFC 8785 Canonical Digests**: Mode A signatures verify against the canonical JSON digest
+   of the migration plan and the repository safety policy. If any field or command changes, the digest invalidates,
+   preventing replay or tampering of approved plans.
+3. **Multi-Algorithm Support & Fallbacks**: The trust store supports Ed25519 public-key verification and HMAC-SHA256
+   shared-secret signing. Plans approved without an authority key fall back gracefully to Mode B (authenticated user)
+   or Mode C (unauthenticated / heuristic).
+
+### Containerized Command Execution Sandbox
+1. **Execution Confinement**: Validation commands generated during migration can execute inside isolated container
+   environments (Docker or Podman) with dropped Linux capabilities (`--cap-drop=ALL`), read-only root filesystems,
+   and unprivileged execution (`--security-opt=no-new-privileges`).
+2. **Metacharacter & Shell Injection Defense**: Command allowlists strictly check binaries and flags, rejecting shell
+   metacharacters (pipes, semicolons, backticks) before invoking container runtimes.
+3. **Graceful Fallback**: If container runtimes are unavailable or disabled by configuration, the runner seamlessly
+   falls back to the standard local command runner while maintaining timeout and environment safety boundaries.
+
+### Multi-File AngularJS to Modern Angular 17+ Standalone Transformation
+1. **Service Extraction**: Legacy `$http` service definitions are analyzed into intermediate models capturing endpoints,
+   HTTP methods, parameter signatures, and headers, and rendered into modern TypeScript services utilizing `inject(HttpClient)`
+   and returning strongly typed `Observable<T>`.
+2. **Modern Angular Architecture Enforcement**:
+   - Every generated component is `standalone: true` with explicit imports.
+   - Component state uses Angular Signals (`signal()`, `computed()`) under `ChangeDetectionStrategy.OnPush`.
+   - Legacy template directives (`ng-if`, `ng-show`, `ng-repeat`) are deterministically converted into modern
+     `@if (...)` and `@for (... of ...; track ...)` control flow blocks.
+   - Deprecated CSS classes (Bootstrap 3/4 `pull-right`, `pull-left`, `hidden-xs`, `col-xs-*`) are automatically
+     upgraded to modern Bootstrap 5 equivalents (`ms-auto`, `me-auto`, `d-none d-sm-block`, `col-*`).
+3. **Automated Jasmine Spec Generation**: For every transformed service and component, Jasmine unit test specs are
+   automatically produced using `TestBed` and `HttpTestingController` (`provideHttpClientTesting()`), ensuring high
+   regression test coverage right out of the box.
+
+
 

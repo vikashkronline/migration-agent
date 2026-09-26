@@ -82,6 +82,12 @@ class EvaluationService:
                             .name.replace(".directive.js", "")
                             .replace(".directive.ts", "")
                         )
+                    elif ".component." in f.path or f.path.endswith(".component.js"):
+                        detected.add(
+                            Path(f.path)
+                            .name.replace(".component.js", "")
+                            .replace(".component.ts", "")
+                        )
         else:
             # Fallback direct filesystem discovery for minimal tests
             comp_dir = target_dir / "app" / "components"
@@ -90,6 +96,8 @@ class EvaluationService:
                     detected.add(p.stem)
             for p in target_dir.rglob("*.directive.js"):
                 detected.add(p.name.replace(".directive.js", ""))
+            for p in target_dir.rglob("*.component.js"):
+                detected.add(p.name.replace(".component.js", ""))
 
         # Step 2: Calculate evaluation metrics against benchmark ground truth
         expected = set(benchmark.expected_components)

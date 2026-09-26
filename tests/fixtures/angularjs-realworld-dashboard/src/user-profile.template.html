@@ -1,0 +1,12 @@
+<div class="user-profile card p-3 shadow-sm col-xs-12">
+  <div class="card-header d-flex align-items-center">
+    <h3 class="h6 mb-0">{{name}}</h3>
+    <button type="button" class="btn btn-sm btn-outline-primary pull-right" ng-click="toggleDetails()">
+      Toggle Profile
+    </button>
+  </div>
+  <div class="card-body" ng-if="isExpanded">
+    <p class="text-muted mb-1">Role: {{role}}</p>
+    <p class="text-muted mb-0">Department: {{department}}</p>
+  </div>
+</div>

@@ -48,8 +48,11 @@ from migration_agent.domain.evaluations import (
 from migration_agent.domain.frameworks import (
     FrameworkCapabilities,
     FrameworkCapability,
+    IntermediateService,
     NegotiationResult,
+    ServiceMethod,
     SourceComponentBundle,
+    SourceServiceBundle,
 )
 from migration_agent.domain.fullstack import (
     CrossDomainDependencyGraph,
@@ -110,6 +113,12 @@ from migration_agent.domain.specialists import (
     SpecialistRole,
     SubagentUsageRecord,
 )
+from migration_agent.domain.trust import (
+    AuthorityKey,
+    RepositoryBinding,
+    SignatureVerificationResult,
+    TrustRecord,
+)
 from migration_agent.domain.validation import (
     MigrationRunReport,
     RepairAttempt,
@@ -129,6 +138,7 @@ __all__ = [
     "ApprovalSignature",
     "ApprovePlanPayload",
     "AssuranceLevel",
+    "AuthorityKey",
     "BudgetExhaustedError",
     "BudgetLimit",
     "BudgetSummary",
@@ -167,6 +177,7 @@ __all__ = [
     "GraphView",
     "ImpactReport",
     "InspectedTextFile",
+    "IntermediateService",
     "InventoryFile",
     "InventoryInterpretation",
     "InventoryInterpretationRequest",
@@ -191,6 +202,7 @@ __all__ = [
     "RepairAttempt",
     "RepairDiagnosis",
     "RepairDiagnosticianRequest",
+    "RepositoryBinding",
     "RepositoryDescriptor",
     "RepositorySnapshot",
     "RunDetailView",
@@ -198,12 +210,16 @@ __all__ = [
     "RunStatus",
     "RunSummary",
     "RunSummaryView",
+    "ServiceMethod",
     "SessionTokenInfo",
+    "SignatureVerificationResult",
     "SourceComponentBundle",
+    "SourceServiceBundle",
     "SpecialistEvaluationMetric",
     "SpecialistRole",
     "StepRisk",
     "SubagentUsageRecord",
+    "TrustRecord",
     "ValidationCommand",
     "ValidationProfile",
     "ValidationResult",

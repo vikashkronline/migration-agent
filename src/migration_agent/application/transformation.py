@@ -31,6 +31,8 @@ from migration_agent.ports import (
     FrameworkAdapterRegistry,
     InspectionPolicy,
     OperationalCheckpoint,
+    ServiceExtractorPort,
+    ServiceRendererPort,
     WorkspacePort,
 )
 
@@ -54,6 +56,8 @@ class TransformationService:
         filesystem: FilesystemInspectorPort | None = None,
         audit_logger: AuditLogPort | None = None,
         checkpoint_store: CheckpointPort | None = None,
+        service_extractor: ServiceExtractorPort | None = None,
+        service_renderer: ServiceRendererPort | None = None,
     ) -> None:
         self.workspace_adapter = workspace_adapter
         self.extractor = extractor
@@ -62,6 +66,8 @@ class TransformationService:
         self.filesystem = filesystem
         self.audit_logger = audit_logger
         self.checkpoint_store = checkpoint_store
+        self.service_extractor = service_extractor
+        self.service_renderer = service_renderer
 
     def _resolve_pair(self, root: Path) -> tuple[ComponentExtractorPort, ComponentRendererPort]:
         """Resolve extractor and renderer via explicit injection or capability negotiation."""
@@ -86,6 +92,10 @@ class TransformationService:
             if src_adapter is not None and tgt_adapter is not None:
                 ext = src_adapter.get_extractor()
                 rnd = tgt_adapter.get_renderer()
+                if hasattr(src_adapter, "get_service_extractor"):
+                    self.service_extractor = src_adapter.get_service_extractor()
+                if hasattr(tgt_adapter, "get_service_renderer"):
+                    self.service_renderer = tgt_adapter.get_service_renderer()
                 if ext is not None and rnd is not None:
                     return ext, rnd
 
@@ -165,7 +175,41 @@ class TransformationService:
                 )
                 diff_chunks.append("".join(diff))
 
+        if self.service_extractor is not None and self.service_renderer is not None:
+            service_bundles = self.service_extractor.discover_services(root)
+            for s_bundle in service_bundles:
+                inter_svc = self.service_extractor.extract_service(s_bundle.service_source)
+                svc_ts = self.service_renderer.render_service_ts(inter_svc)
+                svc_spec = self.service_renderer.render_spec_ts(inter_svc)
+                kebab_svc = _to_kebab_case(inter_svc.name)
+                svc_dir = "src/app/services"
+                svc_files = [
+                    (f"{svc_dir}/{kebab_svc}.service.ts", svc_ts.encode("utf-8")),
+                    (f"{svc_dir}/{kebab_svc}.service.spec.ts", svc_spec.encode("utf-8")),
+                ]
+                for rel_path, content_bytes in svc_files:
+                    digest = compute_file_sha256(content_bytes)
+                    change = FileChange(
+                        path=rel_path,
+                        operation=FileOperation.CREATE,
+                        file_mode=FileMode.STANDARD,
+                        content_digest=digest,
+                        content_bytes=content_bytes,
+                    )
+                    changes.append(change)
+                    new_lines = content_bytes.decode("utf-8", errors="replace").splitlines(
+                        keepends=True
+                    )
+                    diff = difflib.unified_diff(
+                        [],
+                        new_lines,
+                        fromfile=f"a/{rel_path}",
+                        tofile=f"b/{rel_path}",
+                    )
+                    diff_chunks.append("".join(diff))
+
         changeset_id = f"cs-{uuid.uuid4().hex[:8]}"
+
         target_step_id = step_id or (plan.steps[0].step_id if plan.steps else "step-001")
 
         preliminary_changeset = ChangeSet(

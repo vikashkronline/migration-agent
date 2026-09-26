@@ -1,0 +1,15 @@
+{
+  "name": "angularjs-realworld-dashboard",
+  "version": "1.0.0",
+  "description": "Enterprise AngularJS dashboard module",
+  "dependencies": {
+    "angular": "^1.6.10",
+    "angular-route": "^1.6.10"
+  },
+  "devDependencies": {
+    "jasmine-core": "^3.8.0"
+  },
+  "scripts": {
+    "test": "node -e \"console.log('PASS: all dashboard tests passed');\""
+  }
+}

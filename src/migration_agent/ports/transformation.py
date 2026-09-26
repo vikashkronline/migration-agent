@@ -5,7 +5,11 @@ from typing import Any, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from migration_agent.domain.frameworks import SourceComponentBundle
+from migration_agent.domain.frameworks import (
+    IntermediateService,
+    SourceComponentBundle,
+    SourceServiceBundle,
+)
 
 
 class IntermediateComponent(BaseModel):
@@ -57,3 +61,25 @@ class ComponentRendererPort(Protocol):
 
     def render_spec_ts(self, component: IntermediateComponent) -> str:
         """Render modern unit test spec."""
+
+
+@runtime_checkable
+class ServiceExtractorPort(Protocol):
+    """Boundary for extracting service/API client metadata from legacy frameworks."""
+
+    def extract_service(self, service_source: str) -> IntermediateService:
+        """Parse service source code into an IntermediateService representation."""
+
+    def discover_services(self, source_root: Path) -> tuple[SourceServiceBundle, ...]:
+        """Discover service source files in the repository."""
+
+
+@runtime_checkable
+class ServiceRendererPort(Protocol):
+    """Boundary for rendering modern target framework services."""
+
+    def render_service_ts(self, service: IntermediateService) -> str:
+        """Render modern Angular injectable service with inject(HttpClient)."""
+
+    def render_spec_ts(self, service: IntermediateService) -> str:
+        """Render service unit test spec with HttpTestingController."""

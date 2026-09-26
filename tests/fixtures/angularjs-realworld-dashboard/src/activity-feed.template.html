@@ -1,0 +1,11 @@
+<div class="activity-feed card p-3 mb-3 shadow-sm col-xs-12">
+  <div class="d-flex justify-content-between align-items-center">
+    <h4 class="h6 mb-0">{{$ctrl.title}}</h4>
+    <button type="button" class="btn btn-sm btn-outline-secondary pull-right" ng-click="$ctrl.toggleFeed()">
+      Expand Feed
+    </button>
+  </div>
+  <div class="feed-content mt-2" ng-if="$ctrl.isExpanded">
+    <p class="text-muted mb-0">Showing latest activities (Limit: {{$ctrl.limit}})</p>
+  </div>
+</div>

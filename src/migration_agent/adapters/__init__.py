@@ -3,6 +3,7 @@
 from migration_agent.adapters.agents import OpenAIAgentsRuntimeAdapter
 from migration_agent.adapters.checkpoints import SqliteCheckpointStore
 from migration_agent.adapters.command_runner import FakeCommandRunner, SubprocessCommandRunner
+from migration_agent.adapters.container_runner import ContainerizedCommandRunner
 from migration_agent.adapters.control_api import (
     InMemoryEventBroadcaster,
     LoopbackControlServer,
@@ -27,8 +28,14 @@ from migration_agent.adapters.governance import GitGovernanceAdapter
 from migration_agent.adapters.reporting import AnalysisReportWriter, InventoryReportWriter
 from migration_agent.adapters.transforms import (
     AngularJsDirectiveExtractor,
+    AngularJsServiceExtractor,
     AngularStandaloneComponentRenderer,
+    AngularStandaloneServiceRenderer,
     EmberClassicComponentExtractor,
+)
+from migration_agent.adapters.trust_store import (
+    CryptoSignatureVerifierAdapter,
+    LocalTrustStoreAdapter,
 )
 from migration_agent.adapters.workspace import LocalWorkspaceAdapter
 from migration_agent.application.fullstack_service import CrossDomainLinker
@@ -38,9 +45,13 @@ __all__ = [
     "AngularAdapter",
     "AngularJsDirectiveAdapter",
     "AngularJsDirectiveExtractor",
+    "AngularJsServiceExtractor",
     "AngularStandaloneComponentRenderer",
+    "AngularStandaloneServiceRenderer",
     "BackendApiAdapter",
+    "ContainerizedCommandRunner",
     "CrossDomainLinker",
+    "CryptoSignatureVerifierAdapter",
     "EmberClassicAdapter",
     "EmberClassicComponentExtractor",
     "FakeAgentRuntime",
@@ -52,6 +63,7 @@ __all__ = [
     "InMemoryEventBroadcaster",
     "InfrastructureAdapter",
     "InventoryReportWriter",
+    "LocalTrustStoreAdapter",
     "LocalWorkspaceAdapter",
     "LoopbackControlServer",
     "OpenAIAgentsRuntimeAdapter",

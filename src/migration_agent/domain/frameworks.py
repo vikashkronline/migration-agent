@@ -53,6 +53,38 @@ class SourceComponentBundle(BaseModel):
     style_source: str = Field(default="")
 
 
+class ServiceMethod(BaseModel):
+    """A remote or business method exposed by a shared service."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    name: str = Field(min_length=1)
+    http_method: str = Field(default="GET")
+    endpoint: str = Field(default="")
+    parameters: tuple[str, ...] = Field(default_factory=tuple)
+    return_type: str = Field(default="Observable<any>")
+
+
+class SourceServiceBundle(BaseModel):
+    """A discovered legacy service bundle eligible for extraction."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    service_name: str = Field(min_length=1)
+    source_files: tuple[str, ...] = Field(default_factory=tuple)
+    service_source: str = Field(default="")
+
+
+class IntermediateService(BaseModel):
+    """Framework-neutral intermediate representation of a shared business/API service."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    name: str = Field(min_length=1)
+    methods: tuple[ServiceMethod, ...] = Field(default_factory=tuple)
+    metadata: dict[str, object] = Field(default_factory=dict)
+
+
 class NegotiationResult(BaseModel):
     """Result of negotiating an end-to-end migration pair between source and target frameworks."""
 

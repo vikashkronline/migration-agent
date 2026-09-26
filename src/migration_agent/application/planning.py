@@ -12,6 +12,7 @@ from migration_agent.domain import (
     AnalysisResult,
     ApprovalSignature,
     AssuranceLevel,
+    AuthorityKey,
     MigrationPlan,
     PlanCriticRequest,
     PlanStatus,
@@ -26,6 +27,7 @@ from migration_agent.ports import (
     GovernancePort,
     OperationalCheckpoint,
     PlanningRequest,
+    SignatureVerifierPort,
     SpecialistRuntimePort,
 )
 
@@ -176,6 +178,9 @@ class PlanningService:
         actor: str,
         assurance_level: AssuranceLevel = AssuranceLevel.MODE_B,
         project_root: str | None = None,
+        custom_signature: str | None = None,
+        authority_key: AuthorityKey | None = None,
+        signature_verifier: SignatureVerifierPort | None = None,
     ) -> MigrationPlan:
         """Sign and approve a migration plan with cryptographic digest binding."""
         plan = self.get_plan(plan_id, project_root=project_root)
@@ -186,11 +191,26 @@ class PlanningService:
         target_root = project_root or plan.source_root
         active_policy_digest = self.governance.get_policy_digest(target_root)
 
+        if assurance_level == AssuranceLevel.MODE_A:
+            if not custom_signature or authority_key is None or signature_verifier is None:
+                raise ValueError(
+                    "Mode A approval requires custom_signature, "
+                    "authority_key, and signature_verifier."
+                )
+            verification = signature_verifier.verify(
+                current_digest, custom_signature, authority_key
+            )
+            if not verification.verified:
+                raise ValueError(f"Mode A signature verification failed: {verification.reason}")
+            sig_str = custom_signature
+        else:
+            sig_str = custom_signature or f"sig:{actor}:{current_digest[7:19]}"
+
         signature = ApprovalSignature(
             actor=actor,
             plan_digest=current_digest,
             policy_digest=active_policy_digest,
-            signature=f"sig:{actor}:{current_digest[7:19]}",
+            signature=sig_str,
             assurance_level=assurance_level,
         )
 
