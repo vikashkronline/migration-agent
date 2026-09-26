@@ -335,7 +335,95 @@ Comparative benchmark runs:
 2. Plan creation with critic: `migration-agent plan create tests/fixtures/ember-classic-mini --fake-runtime --critic` successfully integrated Plan Critic findings into validation warnings without mutating DAG topology.
 3. Repair loop with Diagnostician: Diagnostician invoked on validation failure, out-of-scope patches deterministically rejected per Invariant 26, in-scope patches correctly resolved failures.
 
-## Later phases
+## Phase 9 — Complete
 
-Phases 9 through 10 have not started. Full-stack discovery and polyglot dependency graphs are deferred to Phase 9.
+Scope: Expansion to Full-Stack Migration Domains & cross-domain dependency graphs.
+- Typed domain contracts: `MigrationDomain` (`FRONTEND`, `BACKEND_API`, `DATABASE_SCHEMA`, `INFRASTRUCTURE`), `DependencyRelation` (`INVOKES_API`, `CALLS_SERVICE`, `QUERIES_DB`, `DEFINES_SCHEMA`, `CONFIGURES`, `DEPENDS_ON`), `CrossDomainNode`, `CrossDomainEdge`, `CrossDomainDependencyGraph`, `ImpactReport`, and `FullStackInventory`.
+- Cross-domain dependency graph modeling: directed graph linking `UI -> API -> Service -> DB`, cycle detection, topological sorting, ripple/impact analysis (`analyze_impact`), and domain-partitioned Mermaid flowchart generation (`to_mermaid`).
+- Read-only discovery adapters: `FrontendDomainAdapter` (components and outbound API calls), `BackendApiAdapter` (FastAPI and Express route handlers and database queries), `SqlDatabaseAdapter` (static DDL parsing and strict read-only SQLite inspection with zero mutations), and `InfrastructureAdapter` (Dockerfile and docker-compose services).
+- Cross-domain dependency linker: `CrossDomainLinker` deterministically synthesizing cross-layer edges connecting UI components to backend endpoints, backend queries to database tables, and compose services to application layers.
+- Full-stack reporting: `FullStackReportWriter` generating `fullstack_inventory.json`, `dependency_graph.mermaid`, and `fullstack_inventory.md` with source repository overlap rejection.
+- Synthetic full-stack test fixture: `tests/fixtures/fullstack-ecommerce-mini` incorporating Angular Standalone frontend, Express backend, SQL schema, and docker-compose infrastructure.
+- CLI commands: `migration-agent graph PATH` (alias: `migration-agent fullstack PATH`) supporting `--format [json|mermaid|summary]`, `--mermaid`, `--output-dir`, and `--impact-of <node_id>`.
+
+Completed on 2026-09-25 using `uv` and an isolated CPython 3.12.14 environment. The dependency lock resolved 69 packages. The required evidence is:
+
+```text
+uv sync --all-groups
+Resolved 69 packages; checked 68 packages.
+
+uv run pytest
+243 passed, 2 skipped in 13.92s
+
+uv run ruff check .
+All checks passed!
+
+uv run ruff format --check .
+126 files already formatted.
+
+uv run mypy src
+Success: no issues found in 54 source files.
+
+uv run migration-agent doctor
+Exit code 0; emitted schema-versioned JSON with status "ok" checking google-genai, openai-agents, pydantic, pydantic-settings, typer.
+```
+
+A full-stack smoke run against `tests/fixtures/fullstack-ecommerce-mini` executed end-to-end:
+1. `migration-agent graph tests/fixtures/fullstack-ecommerce-mini --mermaid` generated a verified Mermaid flowchart organized into 4 domain subgraphs (`Frontend`, `Backend API`, `Database Schema`, `Infrastructure`).
+2. `migration-agent graph tests/fixtures/fullstack-ecommerce-mini --impact-of db:users --format summary` identified 7 dependent components across 4 domains (`frontend`, `backend_api`, `database_schema`, `infrastructure`).
+3. Database inspection verified strict read-only guarantees (SQLite opened via URI `mode=ro`, DDL statically parsed, zero write/schema mutations executed).
+
+## Phase 10 — Complete
+
+Scope: Local Control Center GUI, loopback Control API server, and distribution packaging pipeline (ADR-5, ADR-9).
+- Local Control Center Web GUI:
+  - Angular 21 LTS Standalone UI architecture adhering to modern standards (`standalone: true`, `ChangeDetectionStrategy.OnPush`, `@if` / `@for track`, `inject()`, Signals, Bootstrap 5.3 utilities, theme toggle with native dark mode).
+  - Bundled self-contained web assets in `src/migration_agent/ui/static/` (`index.html`, `styles.css`, `app.js`) supporting offline execution with strict Mermaid.js diagram visualization, side-by-side diff review with syntax highlighting, and interactive plan approval signing with canonical RFC 8785 digests.
+  - Angular Standalone TypeScript source suite in `ui/control-center/` (`AppComponent`, `RunListComponent`, `DiffViewerComponent`, `PlanDetailComponent`, `GraphViewerComponent`, `ControlApiService`, `EventSocketService`).
+- Loopback Control API Server (`127.0.0.1`):
+  - Standard library `ThreadingHTTPServer` bound strictly to loopback (`127.0.0.1` or `localhost`); any non-loopback bind address is rejected with `PermissionError`.
+  - Cryptographically generated session token per launch (`secrets.token_urlsafe(32)`), authenticated via `X-Session-Token`, Bearer authorization header, cookie, or query parameter.
+  - Strict browser Origin / Referer validation enforcing exact match with loopback host and listening port; external origins are rejected with 403 Forbidden.
+  - CSRF token validation (`X-CSRF-Token`) required on all mutating state operations (`POST`).
+  - Mutating idempotency cache ensuring duplicate requests return identical results without repeated side-effects.
+  - RFC 6455 WebSocket protocol upgrade handler transmitting real-time pipeline events, with automatic Server-Sent Events (SSE) fallback at `/api/v1/events`.
+  - Strict Content-Security-Policy (`default-src 'self'`), `X-Content-Type-Options: nosniff`, and `X-Frame-Options: DENY`.
+- CLI Command:
+  - `migration-agent ui [PATH]` and alias `agent ui [PATH]` supporting `--port` (`-p`), `--host`, `--open / --no-open`, and `--token`.
+  - Validates target directory, launches server in background thread, opens browser automatically, and cleanly shuts down on Ctrl+C.
+- Distribution Packaging Pipeline:
+  - Release manifest generator and validator (`src/migration_agent/packaging/release_manifest.py`) computing canonical SHA-256 asset checksums, file sizes, and platform metadata.
+  - Binary packaging specification and prompt cloaking pipeline (`src/migration_agent/packaging/build_binary.py`) providing PyInstaller standalone binary configuration with hidden imports, bundled UI data, and XOR/base64 prompt cloaking.
+- Adversarial Security Matrix Tests:
+  - Non-loopback binding rejection, Origin spoofing defense, missing/invalid CSRF rejection, session token authentication, mutating idempotency on terminal states, and release manifest integrity verification.
+
+Completed on 2026-09-26 using `uv` and an isolated CPython 3.12.14 environment. The required evidence is:
+
+```text
+uv sync --all-groups
+Resolved 69 packages; checked 68 packages.
+
+uv run pytest
+265 passed, 2 skipped in 66.31s
+
+uv run ruff check .
+All checks passed!
+
+uv run ruff format --check .
+140 files already formatted.
+
+uv run mypy src
+Success: no issues found in 63 source files.
+
+uv run migration-agent doctor
+Exit code 0; emitted schema-versioned JSON with status "ok" checking google-genai, openai-agents, pydantic, pydantic-settings, typer.
+```
+
+A live UI smoke test confirmed:
+1. `migration-agent ui tests/fixtures/fullstack-ecommerce-mini --port 8080 --no-open` starts the server and outputs tokenized launch URL.
+2. Web UI loads runs, inspects plan steps, displays side-by-side diffs, generates Mermaid dependency graph, and verifies doctor checks via loopback REST API.
+3. Live WebSocket broadcast pushes real-time log events to connected browser sessions.
+4. Non-loopback origin requests are rejected with 403 Forbidden, and mutating state changes require valid CSRF and session tokens.
+
+
 

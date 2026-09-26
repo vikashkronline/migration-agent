@@ -1,0 +1,10 @@
+<div class="card p-3 shadow-sm">
+  <h5 class="card-title">User Roster</h5>
+  @for (user of users(); track user.id) {
+    <div class="user-row border-bottom py-2">
+      <strong>{{ user.name }}</strong> ({{ user.email }})
+    </div>
+  } @empty {
+    <p class="text-muted">No users found.</p>
+  }
+</div>

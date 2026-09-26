@@ -27,6 +27,11 @@ _LOCKFILE_NAMES = {
 _BUILD_CONFIG_NAMES = {
     ".babelrc",
     "angular.json",
+    "compose.yaml",
+    "compose.yml",
+    "docker-compose.yaml",
+    "docker-compose.yml",
+    "dockerfile",
     "ember-cli-build.js",
     "jsconfig.json",
     "tsconfig.json",
@@ -38,7 +43,7 @@ _BUILD_CONFIG_PREFIXES = (
     "vite.config.",
     "webpack.config.",
 )
-_SOURCE_SUFFIXES = {".cjs", ".js", ".jsx", ".mjs", ".ts", ".tsx"}
+_SOURCE_SUFFIXES = {".cjs", ".js", ".jsx", ".mjs", ".py", ".sql", ".ts", ".tsx"}
 _TEMPLATE_SUFFIXES = {".hbs", ".html"}
 _STYLE_SUFFIXES = {".css", ".less", ".sass", ".scss"}
 _SECRET_NAMES = {
@@ -185,7 +190,11 @@ class SafeFilesystemInspector:
             return FileCategory.MANIFEST
         if name in _LOCKFILE_NAMES:
             return FileCategory.LOCKFILE
-        if name in _BUILD_CONFIG_NAMES or name.startswith(_BUILD_CONFIG_PREFIXES):
+        if (
+            name in _BUILD_CONFIG_NAMES
+            or name.startswith(_BUILD_CONFIG_PREFIXES)
+            or name.endswith("dockerfile")
+        ):
             return FileCategory.BUILD_CONFIG
         if (
             "tests" in parts or "test" in parts or "__tests__" in parts

@@ -1,9 +1,13 @@
 """Command-line entry point for Migration Agent."""
 
+import contextlib
 import json
 import os
+import secrets
 import sys
+import time
 import uuid
+import webbrowser
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Annotated
@@ -18,19 +22,25 @@ from migration_agent.adapters import (
     EmberClassicAdapter,
     FakeAgentRuntime,
     FakeCommandRunner,
+    FullStackReportWriter,
     GeminiRuntimeAdapter,
     GitGovernanceAdapter,
+    InMemoryEventBroadcaster,
     InventoryReportWriter,
     LocalWorkspaceAdapter,
+    LoopbackControlServer,
     OpenAIAgentsRuntimeAdapter,
     SafeFilesystemInspector,
     SqliteCheckpointStore,
     SubprocessCommandRunner,
+    create_default_domain_adapters,
 )
 from migration_agent.application import (
     AnalysisService,
     BoundedRepairService,
+    ControlApiService,
     EvaluationService,
+    FullStackDiscoveryService,
     InventoryService,
     PlanningService,
     ReportService,
@@ -253,6 +263,190 @@ def inventory_command(
             separators=(",", ":"),
             sort_keys=True,
         )
+    )
+
+
+@app.command("graph")
+def graph_command(
+    path: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            help="Read-only source repository to inspect for full-stack domains.",
+        ),
+    ],
+    format: Annotated[
+        str,
+        typer.Option(
+            "--format",
+            "-f",
+            help="Output format: json, mermaid, or summary.",
+        ),
+    ] = "json",
+    mermaid: Annotated[
+        bool,
+        typer.Option(
+            "--mermaid",
+            "-m",
+            help="Output Mermaid flowchart directly to stdout.",
+        ),
+    ] = False,
+    output_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--output-dir",
+            "-o",
+            help="Optional directory to write full-stack inventory, Mermaid, and Markdown reports.",
+        ),
+    ] = None,
+    impact_of: Annotated[
+        str | None,
+        typer.Option(
+            "--impact-of",
+            help="Node ID to compute upstream dependencies and downstream impact ripples for.",
+        ),
+    ] = None,
+) -> None:
+    """Discover full-stack domains and construct a cross-domain dependency graph."""
+    service = FullStackDiscoveryService(
+        filesystem=SafeFilesystemInspector(),
+        adapters=create_default_domain_adapters(),
+    )
+    try:
+        inventory = service.discover(path)
+    except (OSError, ValueError) as error:
+        typer.echo(
+            json.dumps(
+                {"error": str(error), "status": "error"},
+                separators=(",", ":"),
+                sort_keys=True,
+            ),
+            err=True,
+        )
+        raise typer.Exit(code=2) from error
+
+    written_files: dict[str, str] = {}
+    if output_dir is not None:
+        try:
+            json_path, mermaid_path, markdown_path = FullStackReportWriter().write(
+                inventory, output_dir
+            )
+            written_files = {
+                "json_report": str(json_path),
+                "mermaid_report": str(mermaid_path),
+                "markdown_report": str(markdown_path),
+            }
+        except (OSError, ValueError) as error:
+            typer.echo(
+                json.dumps(
+                    {"error": str(error), "status": "error"},
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
+                err=True,
+            )
+            raise typer.Exit(code=2) from error
+
+    impact_data: dict[str, object] | None = None
+    if impact_of is not None:
+        try:
+            impact_report = inventory.graph.compute_impact(impact_of)
+            impact_data = impact_report.model_dump(mode="json")
+        except ValueError as err:
+            typer.echo(
+                json.dumps(
+                    {"error": str(err), "status": "error"},
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
+                err=True,
+            )
+            raise typer.Exit(code=1) from err
+
+    if mermaid or format.lower() == "mermaid":
+        typer.echo(inventory.graph.to_mermaid(direction="TD"))
+        return
+
+    if format.lower() == "summary":
+        typer.echo(f"Repository: {inventory.repository.name}")
+        typer.echo(f"Domains detected: {', '.join(d.value for d in inventory.domains_detected)}")
+        typer.echo(
+            f"Total nodes: {len(inventory.graph.nodes)}, Total edges: {len(inventory.graph.edges)}"
+        )
+        if impact_data:
+            typer.echo(f"Impact of {impact_of}: {impact_data.get('impact_summary')}")
+        return
+
+    output_dict: dict[str, object] = {
+        "repository": inventory.repository.name,
+        "domains_detected": [d.value for d in inventory.domains_detected],
+        "summary": inventory.summary,
+        "nodes": [n.model_dump(mode="json") for n in inventory.graph.nodes],
+        "edges": [e.model_dump(mode="json") for e in inventory.graph.edges],
+        "status": "ok",
+    }
+    if impact_data:
+        output_dict["impact_analysis"] = impact_data
+    if written_files:
+        output_dict["reports"] = written_files
+
+    typer.echo(json.dumps(output_dict, separators=(",", ":"), sort_keys=True))
+
+
+@app.command("fullstack")
+def fullstack_command(
+    path: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            help="Read-only source repository to inspect for full-stack domains.",
+        ),
+    ],
+    format: Annotated[
+        str,
+        typer.Option(
+            "--format",
+            "-f",
+            help="Output format: json, mermaid, or summary.",
+        ),
+    ] = "json",
+    mermaid: Annotated[
+        bool,
+        typer.Option(
+            "--mermaid",
+            "-m",
+            help="Output Mermaid flowchart directly to stdout.",
+        ),
+    ] = False,
+    output_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--output-dir",
+            "-o",
+            help="Optional directory to write full-stack inventory, Mermaid, and Markdown reports.",
+        ),
+    ] = None,
+    impact_of: Annotated[
+        str | None,
+        typer.Option(
+            "--impact-of",
+            help="Node ID to compute upstream dependencies and downstream impact ripples for.",
+        ),
+    ] = None,
+) -> None:
+    """Discover full-stack domains and construct a cross-domain graph (alias for 'graph')."""
+    graph_command(
+        path=path,
+        format=format,
+        mermaid=mermaid,
+        output_dir=output_dir,
+        impact_of=impact_of,
     )
 
 
@@ -1995,6 +2189,134 @@ def eval_command(
     else:
         typer.echo(json.dumps(payload, separators=(",", ":"), sort_keys=True), err=True)
         raise typer.Exit(code=2)
+
+
+@app.command("ui")
+def ui_command(
+    path: Annotated[
+        Path,
+        typer.Argument(
+            help="Target repository path to inspect and manage.",
+        ),
+    ] = Path("."),
+    port: Annotated[
+        int,
+        typer.Option(
+            "--port",
+            "-p",
+            help="Port to bind on loopback interface (default: 8080).",
+        ),
+    ] = 8080,
+    host: Annotated[
+        str,
+        typer.Option(
+            "--host",
+            help="Loopback host address (must be 127.0.0.1 or localhost).",
+        ),
+    ] = "127.0.0.1",
+    open_browser: Annotated[
+        bool,
+        typer.Option(
+            "--open/--no-open",
+            help="Automatically open browser to Control Center URL on launch.",
+        ),
+    ] = True,
+    token: Annotated[
+        str | None,
+        typer.Option(
+            "--token",
+            help="Predefined session token (cryptographically generated if omitted).",
+        ),
+    ] = None,
+) -> None:
+    """Launch the Local Control Center web GUI on loopback (127.0.0.1)."""
+    if host not in ("127.0.0.1", "localhost"):
+        typer.echo(
+            json.dumps(
+                {
+                    "error": (
+                        "Control API must bind strictly to loopback (127.0.0.1). "
+                        f"Rejected '{host}'."
+                    ),
+                    "status": "error",
+                },
+                separators=(",", ":"),
+            ),
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    target_root = path.resolve()
+    if not target_root.exists() or not target_root.is_dir():
+        typer.echo(
+            json.dumps(
+                {
+                    "error": f"Target path '{target_root}' does not exist or is not a directory.",
+                    "status": "error",
+                },
+                separators=(",", ":"),
+            ),
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    session_token = token if token and len(token) >= 16 else secrets.token_urlsafe(32)
+
+    checkpoint_db = target_root / ".agent" / "checkpoints.db"
+    checkpoint_store = SqliteCheckpointStore(checkpoint_db) if checkpoint_db.exists() else None
+    governance = GitGovernanceAdapter()
+    broadcaster = InMemoryEventBroadcaster()
+    discovery_service = FullStackDiscoveryService(
+        filesystem=SafeFilesystemInspector(),
+        adapters=create_default_domain_adapters(),
+    )
+
+    control_service = ControlApiService(
+        checkpoint_port=checkpoint_store,
+        governance_port=governance,
+        event_broadcaster=broadcaster,
+        discovery_service=discovery_service,
+    )
+
+    server = LoopbackControlServer(
+        control_service=control_service,
+        target_root=target_root,
+        broadcaster=broadcaster,
+    )
+
+    try:
+        server.start(host=host, port=port, session_token=session_token)
+    except OSError as err:
+        typer.echo(
+            json.dumps(
+                {"error": f"Failed to bind port {port}: {err}", "status": "error"},
+                separators=(",", ":"),
+            ),
+            err=True,
+        )
+        raise typer.Exit(code=1) from err
+
+    access_url = f"{server.get_url()}/?token={session_token}"
+
+    info_payload = {
+        "access_url": access_url,
+        "binding": f"http://{host}:{port}",
+        "session_token": session_token,
+        "status": "running",
+        "target_root": str(target_root),
+    }
+    typer.echo(json.dumps(info_payload, separators=(",", ":"), sort_keys=True))
+
+    if open_browser:
+        with contextlib.suppress(Exception):
+            webbrowser.open(access_url)
+
+    try:
+        while True:
+            time.sleep(0.5)
+    except (KeyboardInterrupt, SystemExit):
+        server.stop()
+        typer.echo(json.dumps({"status": "stopped"}, separators=(",", ":")))
 
 
 if __name__ == "__main__":

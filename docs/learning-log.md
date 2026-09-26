@@ -256,6 +256,88 @@ offline verification of component discovery and transformation accuracy:
    transformation against specialist-assisted runs, tracking F1 scores, turn counts, cost in USD, and plan critique
    scores to empirically validate subagent impact.
 
+## Phase 9 — Full-Stack Migration Domains & Cross-Domain Dependency Graphs
 
+### Multi-Domain Taxonomy & Typed Relationships
+1. **Full-Stack Domain Boundaries**: Migration scope was expanded from single-tier frontend components to 4 distinct
+   domains: `FRONTEND`, `BACKEND_API`, `DATABASE_SCHEMA`, and `INFRASTRUCTURE`.
+2. **Typed Cross-Domain Edges**: Relationships between heterogeneous layers are explicitly typed via `DependencyRelation`:
+   `INVOKES_API` (Frontend UI -> Backend API), `CALLS_SERVICE` (Backend -> Backend microservices), `QUERIES_DB`
+   (Backend API -> Database Schema), `DEFINES_SCHEMA` (Database DDL -> Tables/Views), `CONFIGURES` (Infrastructure -> Services),
+   and `DEPENDS_ON` (Service -> Service / Container orchestration).
+
+### Unified Cross-Domain Dependency Graph (`CrossDomainDependencyGraph`)
+1. **Graph Mechanics & Determinism**: Encapsulates `CrossDomainNode` and `CrossDomainEdge` entities with cycle detection,
+   topological ordering (Kahn's algorithm), and deterministic POSIX-path and ID sorting.
+2. **Transitive Ripple Impact Analysis**: Given any modified or legacy node (e.g. database table `db:users`),
+   `compute_impact(node_id)` traverses upstream inbound edges to compute the exact set of transitively impacted nodes,
+   affected domains, and depth metrics. This enables full-stack change blast-radius computation before applying migrations.
+3. **Visual & Machine-Readable Output**: Implemented `to_mermaid()` rendering structured Mermaid subgraphs grouped by domain
+   with custom CSS styling classes and relationship labels, alongside full JSON and Markdown inventory export.
+
+### Pluggable Domain Discovery Adapters
+1. **Modular Protocol (`DomainDiscoveryAdapterPort`)**: Application discovery service coordinates domain adapters
+   without hardcoding framework or layer mechanics:
+   - `FrontendDomainAdapter`: Discovers components (Angular, React, Vue, Ember) and extracts outgoing API endpoints.
+   - `BackendApiAdapter`: Statically analyzes route handlers (FastAPI, Express) with HTTP paths/methods and extracts database table references.
+   - `SqlDatabaseAdapter`: Parses static SQL DDL (`CREATE TABLE`, columns, primary/foreign keys) and inspects SQLite schemas.
+   - `InfrastructureAdapter`: Parses Dockerfiles (base images, exposed ports) and Docker Compose configurations (`services`, `depends_on`).
+2. **Decoupled Cross-Domain Linker**: Cross-tier edges are synthesized deterministically in `CrossDomainLinker` within
+   the application layer by matching API paths, database table names, and infrastructure service names.
+
+### Strict Database Read-Only Safety & Architecture Integrity
+1. **Zero-Mutation Database Inspection**: Live SQLite inspection strictly enforces read-only connections via URI filenames
+   with `file:...&mode=ro` flags and limits queries to schema PRAGMAs (`table_info`, `foreign_key_list`). Any write or DDL
+   operations are strictly prohibited.
+2. **Inward Dependency Direction**: Application services (`FullStackDiscoveryService`, `CrossDomainLinker`) depend purely
+   on domain abstractions and ports. Concrete adapters are injected via the CLI or composition root, strictly honoring
+   inward dependency boundaries without importing outer packages.
+
+## Phase 10 — Local Control Center GUI & Distribution Packaging
+
+### Loopback-Only Control API Security Architecture (ADR-5, ADR-9)
+1. **Loopback Confinement**: The Control API server strictly binds to `127.0.0.1` or `localhost`. Attempting to bind
+   to `0.0.0.0`, public IPv4/IPv6 interfaces, or broadcast addresses is rejected immediately with `PermissionError`,
+   ensuring the management server cannot be accessed from remote networks or adjacent machines.
+2. **Cryptographic Session Authentication**: Every launch generates a cryptographically strong 256-bit URL-safe token
+   (`secrets.token_urlsafe(32)`). Requests must supply this token via `X-Session-Token`, Bearer authorization, secure
+   cookie, or initial URL query parameter. Unauthenticated requests are rejected with 401 Unauthorized.
+3. **Origin & Referer Validation**: To prevent Cross-Site Scripting (XSS) or malicious websites from executing Drive-By
+   attacks against local ports, the server validates incoming `Origin` and `Referer` headers against `127.0.0.1:<port>`
+   or `localhost:<port>`. Cross-origin browser requests are rejected with 403 Forbidden.
+4. **CSRF Defense for State Mutations**: State-changing operations (`POST /api/v1/plans/{id}/approve`,
+   `POST /api/v1/runs/{id}/apply`) require an explicit `X-CSRF-Token` header matching the session token.
+5. **Defense-in-Depth Headers**: The server injects strict headers into all responses:
+   - `Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws://127.0.0.1:<port>; img-src 'self' data:;`
+   - `X-Content-Type-Options: nosniff`
+   - `X-Frame-Options: DENY`
+
+### Real-Time Event Streaming & Mutating Idempotency
+1. **RFC 6455 WebSocket Upgrade & SSE Fallback**: A pure standard-library WebSocket upgrade handler enables full-duplex
+   real-time streaming of migration run events, checkpoints, and logs to connected browser clients without external dependencies.
+   For environments where WebSockets are restricted, a Server-Sent Events (`text/event-stream`) fallback is provided at
+   `/api/v1/events`.
+2. **Mutating Idempotency Caching**: Applying runs or approving plans caches execution results indexed by an `idempotency_key`.
+   Re-transmitting the same request returns the cached result without repeating migration actions or duplicating git commits.
+3. **Terminal State Safety**: Attempts to re-apply runs in terminal states (`APPLIED`, `FAILED`, `ROLLED_BACK`) are
+   deterministically caught and rejected, preserving audit integrity.
+
+### Modern Angular 21 LTS Standalone UI Architecture
+1. **Zero-NgModule Standalone Components**: Every UI component (`AppComponent`, `RunListComponent`, `DiffViewerComponent`,
+   `PlanDetailComponent`, `GraphViewerComponent`) is declared `standalone: true` with explicit imports and dependency injection
+   via `inject()`.
+2. **OnPush Change Detection & Angular Signals**: UI reactivity is driven by Angular Signals (`signal()`, `computed()`) under
+   `ChangeDetectionStrategy.OnPush`, guaranteeing predictable rendering performance and deterministic state updates.
+3. **Control Flow Syntax**: Strictly utilizes modern `@if`, `@else`, and `@for (...; track ...)` control flow blocks,
+   eliminating legacy structural directives (`*ngIf`, `*ngFor`).
+4. **Offline Bundling**: Pre-compiled, self-contained assets in `src/migration_agent/ui/static/` enable the GUI to function
+   100% offline without requiring internet access or CDN downloads.
+
+### Distribution Packaging Pipeline
+1. **Release Manifest Verification (`release_manifest.py`)**: Computes canonical SHA-256 digests and byte sizes for all
+   distribution assets across operating systems (Windows, Linux, macOS), verifying manifest integrity before distribution.
+2. **Binary Packaging & Prompt Cloaking (`build_binary.py`)**: Provides PyInstaller standalone packaging specifications,
+   bundling the UI static directory and SQLite migration schemas while cloaking proprietary agent prompt templates using
+   reversible XOR masking to deter casual inspection in distributed binaries.
 
 

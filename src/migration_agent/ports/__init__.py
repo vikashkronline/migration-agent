@@ -13,8 +13,16 @@ from migration_agent.ports.checkpoints import (
     OperationalCheckpoint,
 )
 from migration_agent.ports.command_runner import CommandRunnerPort
+from migration_agent.ports.control_api import (
+    ControlApiServerPort,
+    EventBroadcasterPort,
+)
 from migration_agent.ports.filesystem import FilesystemInspectorPort, InspectionPolicy
 from migration_agent.ports.frameworks import FrameworkAdapter, FrameworkAdapterRegistry
+from migration_agent.ports.fullstack import (
+    DatabaseInspectorPort,
+    DomainDiscoveryAdapterPort,
+)
 from migration_agent.ports.governance import (
     GovernancePort,
     ProjectManifest,
@@ -37,6 +45,10 @@ __all__ = [
     "CommandRunnerPort",
     "ComponentExtractorPort",
     "ComponentRendererPort",
+    "ControlApiServerPort",
+    "DatabaseInspectorPort",
+    "DomainDiscoveryAdapterPort",
+    "EventBroadcasterPort",
     "FileReaderPort",
     "FilesystemInspectorPort",
     "FrameworkAdapter",
