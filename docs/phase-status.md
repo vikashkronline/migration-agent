@@ -514,3 +514,62 @@ Success: no issues found in 74 source files
 uv run migration-agent doctor
 Exit code 0; emitted schema-versioned JSON with status "ok" checking google-genai, openai-agents, pydantic, pydantic-settings, typer.
 ```
+
+## Section 15 Hardening — Adversarial Chaos & Security Test Matrix — Complete
+
+Scope: Automated comprehensive verification of the 6 adversarial failure mode categories defined in Master Plan Section 15:
+1. **Identity & Authorization Verification**:
+   - RFC 8785 policy tampering and structural mutation detection.
+   - Unknown authority key rejection on bootstrap and evaluation (Mode C fallback).
+   - Repository binding defense (detecting and rejecting root commit SHA and remote origin spoofing).
+   - Cryptographic signature integrity, empty signatures, invalid algorithm prefixes, and bit corruption detection.
+   - Immediate authority key revocation enforcement.
+   - Assurance boundary enforcement (Mode B/C inability to satisfy Mode A, step tampering post-approval invalidation).
+2. **ChangeSet & Drift Invalidation**:
+   - Tampered ChangeSet digest voiding apply token and triggering verified rollback.
+   - Working-tree dirty drift detection aborting apply with `BASE_CHANGED`.
+   - Target revision and plan drift invalidating approval.
+   - Repair security context isolation (automated repairs generating fresh ChangeSets requiring re-approval).
+3. **Apply Safety, Staging & Crash Recovery**:
+   - ChangeSet directory traversal and path escape rejection during preflight.
+   - Controlled simulated apply failure triggering clean, verified byte-level rollback.
+   - Unrecoverable apply and rollback failure transitioning to `RECOVERY_REQUIRED` (Invariant 28) and recording durable recovery checkpoints.
+4. **Event Store & Tamper Evidence**:
+   - Strict monotonic timestamp and sequence ordering validation.
+   - Audit trail tampering detection (out-of-order and retroactive timestamp modifications).
+   - Split-brain rejection: SQLite checkpoint database as canonical authority over external JSONL exports.
+   - Crash recovery resumption from persisted SQLite run records and checkpoint state.
+5. **Native Controlled Execution & Sandboxing**:
+   - Working directory confinement blocking path escape outside staging root.
+   - Environment sanitization stripping developer credentials and tokens.
+   - Command allowlisting blocking unapproved shell utilities.
+   - Argument metacharacter inspection preventing shell injection attacks across both native and containerized runners.
+   - Resource and timeout bounds terminating runaway processes cleanly.
+6. **Control API & Local GUI Security**:
+   - Origin spoofing defense (blocking unauthorized DNS rebinds and external origins with 403 `FORBIDDEN_ORIGIN`).
+   - CSRF token enforcement blocking cross-site mutating requests with 403 `CSRF_REJECTED`.
+   - Session authentication token validation rejecting forged or brute-forced tokens with 401 `UNAUTHORIZED`.
+   - Strict 404 response for nonexistent routes and invalid request paths.
+
+Completed on 2026-09-30 using `uv` and an isolated CPython 3.12.14 environment. The required evidence is:
+
+```text
+uv sync --all-groups
+Resolved 69 packages; checked 68 packages.
+
+uv run pytest
+318 passed, 2 skipped in 48.49s
+
+uv run ruff check .
+All checks passed!
+
+uv run ruff format --check .
+165 files already formatted.
+
+uv run mypy src
+Success: no issues found in 74 source files
+
+uv run migration-agent doctor
+Exit code 0; emitted schema-versioned JSON with status "ok" checking google-genai, openai-agents, pydantic, pydantic-settings, typer.
+```
+

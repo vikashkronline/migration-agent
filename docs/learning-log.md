@@ -405,3 +405,20 @@ offline verification of component discovery and transformation accuracy:
 2. **Post-Hoc Citation Verification**: LLM responses frequently hallucinate plausible-looking files.
    `ContextualQAService` audits all returned citations against eligible repository paths, stripping invalid citations
    and recording explicit citation warnings.
+
+## Section 15 — Adversarial Chaos & Security Testing Matrix
+
+### Identity & Authorization Verification
+1. **RFC 8785 Canonical Serialization Rigidity**: Mutating policy entries (such as injecting undeclared keys or tampering with capabilities) or feeding malformed JSON strictly alters deterministic RFC 8785 digests or triggers strict Pydantic validation errors before policies can be evaluated.
+2. **Repository Binding Defenses**: Cloned or spoofed repositories presenting non-matching root commit hashes or remote origin URLs are deterministically rejected during trust evaluation, preventing cross-repository credential spoofing.
+3. **Cryptographic Assurance Boundaries**: In accordance with the 3-mode security model, Mode B (session-authenticated user) and Mode C (unauthenticated / heuristic) approvals are strictly prevented from authorizing Mode A actions (such as safety policy changes). Modifying plan steps post-approval immediately invalidates the signature digest.
+
+### ChangeSet Drift & Apply Safety
+1. **Postcondition Byte-Level Verification**: Any mutation to target files or ChangeSet descriptors between approval and apply invalidates the token digest. When a patch application or simulated failure occurs, the platform executes a verified rollback. If rollback is forcibly obstructed (e.g. permission or I/O failure), the system explicitly transitions to durable `RECOVERY_REQUIRED` (Invariant 28) and records a recovery checkpoint, refusing further automated mutations until an operator resolves the conflict.
+2. **Working-Tree Dirty Guard**: Any untracked or modified files in target working trees immediately trip `BASE_CHANGED`, aborting migration apply to ensure uncommitted human work is never clobbered.
+3. **Automated Repair Isolation**: When automated repairs generate new candidate code, they are assigned a distinct ChangeSet ID and freshly computed digest, ensuring prior plan approval tokens cannot be replayed.
+
+### Event Store Canonicality & Sandboxing
+1. **Canonical SQLite vs. Derived Exports**: The SQLite checkpoint store remains the authoritative source of truth. External JSONL audit logs cannot create split-brain states; if external JSONL records are deleted or tampered with, SQLite state persists intact and recovers running jobs accurately.
+2. **Subprocess Metacharacter Sanitization**: Both native and containerized command runners strictly inspect arguments for shell metacharacters (`;`, `&`, `|`, `` ` ``, `$`, `\n`, `\r`) before subprocess invocation, preventing command-chaining and shell injection attacks.
+
