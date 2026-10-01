@@ -74,7 +74,10 @@ def test_angularjs_directive_extractor_from_fixture() -> None:
     assert "name" in component.inputs
     assert "role" in component.inputs
     assert "isExpanded" in component.state_properties
-    assert "toggleDetails" in component.methods
+    assert component.methods == ("toggleDetails",)
+    assert component.input_types.get("name") == "string"
+    assert component.input_types.get("role") == "string"
+    assert component.state_types.get("isExpanded") == "boolean"
     assert component.metadata["source_framework"] == "angularjs-directive"
 
 

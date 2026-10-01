@@ -433,4 +433,21 @@ offline verification of component discovery and transformation accuracy:
 1. **RFC 8785 Canonical Digest Binding**: All published assets in `dist/` are classified deterministically and bound into an RFC 8785 canonical digest. Any modification, re-ordering, or tampering with assets alters the manifest digest immediately.
 2. **Authority Key Release Signing**: Release manifests can be signed out-of-band with Ed25519 or HMAC authority keys (`CryptoSignatureVerifierAdapter`), allowing clients to cryptographically verify release authenticity prior to installation.
 
+## Phase 13 — Semantic Transformation Engine & Template Fidelity
+
+### Preserving Source Markup Fidelity over Synthetic Stubs
+1. **DOM Tree and Attribute Preservation**: Replacing full template markup with hardcoded card stubs sacrifices real UI layout, styling classes, and structural semantics. The target component renderer preserves the complete template HTML, upgrading legacy AngularJS directives (`ng-if`, `ng-repeat`, `ng-click`, `ng-show`) to Angular 17+ native control flow (`@if`, `@for`) while upgrading Bootstrap 3/4 classes to Bootstrap 5 (`col-xs-*` -> `col-*`, `pull-right` -> `ms-auto`).
+2. **Backward-Compatible Container Upgrading**: For directive templates lacking outer card styling, bare containers are automatically enhanced with modern Bootstrap 5 utilities (`card p-3 shadow-sm`) to ensure styling consistency without breaking existing assertions.
+
+### Signal Binding Invocation Semantics
+1. **Template Signal Invocations**: Angular Signals in templates must be invoked as functions (`{{ name() }}`, `@if (isExpanded())`). Regex/AST template translators automatically identify signal properties and append parentheses in expressions.
+2. **Loop Iteration Variable Protection**: Variables declared inside `@for (item of items(); track item.id)` are loop iterators, not signals. The transformer distinguishes collection signals (`items()`) from iterator members (`item.name`), ensuring iterator properties are never mutated into invalid function calls.
+
+### Injected Dependency Extraction & Modern Typed DI
+1. **Framework-Internal Filtering**: AngularJS controllers routinely inject both framework infrastructure (`$scope`, `$element`, `$attrs`) and application services (`UserDataService`, `$http`). The extractor strips internal scope handles while mapping application services to modern typed injections.
+2. **Modern `inject()` Pattern**: Angular 17+ strictly favors `inject(ServiceName)` over constructor parameter injection, yielding concise class bodies with typed `private readonly` dependencies.
+
+### Step-Bounded Incremental Transformation Scoping
+1. **Incremental ChangeSet Isolation**: Running whole-project transformation across all components simultaneously creates massive diffs that violate step review boundaries. By resolving `MigrationStep.expected_files`, titles, and source file paths in `TransformationService.preview(..., step_id=...)`, each execution step generates a clean, isolated ChangeSet containing only the targeted component or service suite.
+
 

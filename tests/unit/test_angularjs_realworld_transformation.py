@@ -17,6 +17,7 @@ from migration_agent.domain import (
     MigrationPlan,
     MigrationStep,
 )
+from migration_agent.ports import IntermediateComponent
 
 
 def test_angularjs_realworld_dashboard_component_discovery() -> None:
@@ -99,6 +100,16 @@ def test_angularjs_realworld_dashboard_component_rendering() -> None:
     assert "readonly isExpanded = signal<boolean>(false);" in user_ts
     assert "toggleDetails(): void" in user_ts
 
+    user_html = renderer.render_template_html(user_comp)
+    assert '<div class="user-profile card p-3 shadow-sm col-12">' in user_html
+    assert "@if (isExpanded())" in user_html
+    assert "*ngIf" not in user_html
+    assert '(click)="toggleDetails()"' in user_html
+    assert "{{ name() }}" in user_html
+    assert "{{ role() }}" in user_html
+    assert "{{ department() }}" in user_html
+    assert "ms-auto" in user_html
+
     # 2. ActivityFeed component
     feed_bundle = next(b for b in bundles if b.component_name == "ActivityFeed")
     feed_comp = extractor.extract(
@@ -112,6 +123,15 @@ def test_angularjs_realworld_dashboard_component_rendering() -> None:
     assert "export class ActivityFeedComponent" in feed_ts
     assert "readonly title = input<string>('');" in feed_ts
     assert "toggleFeed(): void" in feed_ts
+
+    feed_html = renderer.render_template_html(feed_comp)
+    assert '<div class="activity-feed card p-3 mb-3 shadow-sm col-12">' in feed_html
+    assert "@if (isExpanded())" in feed_html
+    assert "*ngIf" not in feed_html
+    assert '(click)="toggleFeed()"' in feed_html
+    assert "{{ title() }}" in feed_html
+    assert "{{ limit() }}" in feed_html
+    assert "ms-auto" in feed_html
 
 
 def test_angular_template_migration_helpers() -> None:
@@ -131,6 +151,29 @@ def test_angular_template_migration_helpers() -> None:
     assert "col-12" in migrated
     assert '(click)="toggleDetails()"' in migrated
     assert "@if (isExpanded())" in migrated
+
+
+def test_injected_services_and_outputs_rendering() -> None:
+    comp = IntermediateComponent(
+        name="DashboardWidget",
+        tag_name="app-dashboard-widget",
+        inputs=("widgetId",),
+        input_types={"widgetId": "string"},
+        outputs=("statusChange",),
+        state_properties=("isLoading",),
+        state_types={"isLoading": "boolean"},
+        injected_services=("UserDataService", "Router"),
+        methods=("refreshData",),
+        template_raw="<div>{{widgetId}}</div>",
+    )
+    renderer = AngularStandaloneComponentRenderer()
+    ts_code = renderer.render_component_ts(comp)
+
+    assert "private readonly userDataService = inject(UserDataService);" in ts_code
+    assert "private readonly router = inject(Router);" in ts_code
+    assert "readonly statusChange = output<any>();" in ts_code
+    assert "readonly widgetId = input<string>('');" in ts_code
+    assert "readonly isLoading = signal<boolean>(false);" in ts_code
 
 
 def test_transformation_service_realworld_preview(tmp_path: Path) -> None:
@@ -165,3 +208,60 @@ def test_transformation_service_realworld_preview(tmp_path: Path) -> None:
 
     assert changeset.changeset_digest.startswith("sha256:")
     assert "diff --git" in diff or "---" in diff
+
+
+def test_transformation_service_step_bounded_preview() -> None:
+    fixture_root = Path(__file__).parents[1] / "fixtures" / "angularjs-realworld-dashboard"
+    service = TransformationService(
+        workspace_adapter=LocalWorkspaceAdapter(),
+        extractor=AngularJsDirectiveExtractor(),
+        renderer=AngularStandaloneComponentRenderer(),
+        service_extractor=AngularJsServiceExtractor(),
+        service_renderer=AngularStandaloneServiceRenderer(),
+    )
+
+    step_profile = MigrationStep(
+        step_id="step-01",
+        title="Migrate UserProfile component",
+        description="Migrate UserProfile to Angular standalone",
+        expected_files=["src/app/components/user-profile/user-profile.component.ts"],
+    )
+    step_feed = MigrationStep(
+        step_id="step-02",
+        title="Migrate ActivityFeed component",
+        description="Migrate ActivityFeed to Angular standalone",
+        expected_files=["src/app/components/activity-feed/activity-feed.component.ts"],
+    )
+    step_service = MigrationStep(
+        step_id="step-03",
+        title="Migrate UserDataService service",
+        description="Migrate UserDataService to Angular injectable",
+        expected_files=["src/app/services/user-data-service.service.ts"],
+    )
+
+    plan = MigrationPlan(
+        plan_id="plan-dashboard-stepwise",
+        source_root=str(fixture_root),
+        run_id="run-dash-stepwise",
+        steps=[step_profile, step_feed, step_service],
+    )
+
+    # Preview Step 1 (UserProfile only)
+    cs1, _ = service.preview(fixture_root, plan, step_id="step-01")
+    assert cs1.step_id == "step-01"
+    paths1 = {c.path for c in cs1.changes}
+    assert len(paths1) == 4
+    assert "src/app/components/user-profile/user-profile.component.ts" in paths1
+    assert "src/app/components/user-profile/user-profile.component.html" in paths1
+    assert not any("activity-feed" in p for p in paths1)
+    assert not any("user-data-service" in p for p in paths1)
+
+    # Preview Step 3 (UserDataService only)
+    cs3, _ = service.preview(fixture_root, plan, step_id="step-03")
+    assert cs3.step_id == "step-03"
+    paths3 = {c.path for c in cs3.changes}
+    assert len(paths3) == 2
+    assert "src/app/services/user-data-service.service.ts" in paths3
+    assert "src/app/services/user-data-service.service.spec.ts" in paths3
+    assert not any("user-profile" in p for p in paths3)
+    assert not any("activity-feed" in p for p in paths3)

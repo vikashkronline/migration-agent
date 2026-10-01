@@ -16,6 +16,7 @@ from migration_agent.domain import (
     MigrationPlan,
     PlanStatus,
     SourceComponentBundle,
+    SourceServiceBundle,
     compute_changeset_digest,
     compute_file_sha256,
     compute_worktree_fingerprint,
@@ -131,12 +132,44 @@ class TransformationService:
                 ),
             )
 
+        target_step_id = step_id or (plan.steps[0].step_id if plan.steps else "step-001")
+        target_step = None
+        if step_id is not None and plan.steps:
+            target_step = next((s for s in plan.steps if s.step_id == step_id), None)
+
+        def matches_step_component(
+            b: SourceComponentBundle, comp_kebab: str, inter_name: str
+        ) -> bool:
+            if target_step is None:
+                return True
+            if not target_step.expected_files and not target_step.title:
+                return True
+            expected = [f.lower() for f in target_step.expected_files]
+            if any(comp_kebab in f for f in expected):
+                return True
+            for sf in b.source_files:
+                sf_lower = sf.lower()
+                sf_name = Path(sf).name.lower()
+                if any(sf_name in f or f in sf_lower for f in expected):
+                    return True
+            title_lower = target_step.title.lower()
+            desc_lower = target_step.description.lower()
+            return (
+                comp_kebab in title_lower
+                or b.component_name.lower() in title_lower
+                or inter_name.lower() in title_lower
+                or b.component_name.lower() in desc_lower
+            )
+
         for bundle in bundles:
             intermediate = extractor.extract(
                 bundle.component_source,
                 bundle.template_source,
                 bundle.style_source,
             )
+            kebab_name = _to_kebab_case(intermediate.name or bundle.component_name)
+            if not matches_step_component(bundle, kebab_name, intermediate.name):
+                continue
 
             ts_code = renderer.render_component_ts(intermediate)
             html_code = renderer.render_template_html(intermediate)
@@ -175,13 +208,37 @@ class TransformationService:
                 )
                 diff_chunks.append("".join(diff))
 
+        def matches_step_service(sb: SourceServiceBundle, svc_kebab: str, inter_name: str) -> bool:
+            if target_step is None:
+                return True
+            if not target_step.expected_files and not target_step.title:
+                return True
+            expected = [f.lower() for f in target_step.expected_files]
+            if any(svc_kebab in f for f in expected):
+                return True
+            for sf in sb.source_files:
+                sf_lower = sf.lower()
+                sf_name = Path(sf).name.lower()
+                if any(sf_name in f or f in sf_lower for f in expected):
+                    return True
+            title_lower = target_step.title.lower()
+            desc_lower = target_step.description.lower()
+            return (
+                svc_kebab in title_lower
+                or sb.service_name.lower() in title_lower
+                or inter_name.lower() in title_lower
+                or sb.service_name.lower() in desc_lower
+            )
+
         if self.service_extractor is not None and self.service_renderer is not None:
             service_bundles = self.service_extractor.discover_services(root)
             for s_bundle in service_bundles:
                 inter_svc = self.service_extractor.extract_service(s_bundle.service_source)
+                kebab_svc = _to_kebab_case(inter_svc.name or s_bundle.service_name)
+                if not matches_step_service(s_bundle, kebab_svc, inter_svc.name):
+                    continue
                 svc_ts = self.service_renderer.render_service_ts(inter_svc)
                 svc_spec = self.service_renderer.render_spec_ts(inter_svc)
-                kebab_svc = _to_kebab_case(inter_svc.name)
                 svc_dir = "src/app/services"
                 svc_files = [
                     (f"{svc_dir}/{kebab_svc}.service.ts", svc_ts.encode("utf-8")),
@@ -209,8 +266,6 @@ class TransformationService:
                     diff_chunks.append("".join(diff))
 
         changeset_id = f"cs-{uuid.uuid4().hex[:8]}"
-
-        target_step_id = step_id or (plan.steps[0].step_id if plan.steps else "step-001")
 
         preliminary_changeset = ChangeSet(
             changeset_id=changeset_id,

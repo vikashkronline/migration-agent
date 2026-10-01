@@ -27,6 +27,10 @@ class IntermediateComponent(BaseModel):
     methods: tuple[str, ...] = Field(default_factory=tuple)
     template_raw: str = Field(default="")
     style_raw: str = Field(default="")
+    injected_services: tuple[str, ...] = Field(default_factory=tuple)
+    outputs: tuple[str, ...] = Field(default_factory=tuple)
+    input_types: dict[str, str] = Field(default_factory=dict)
+    state_types: dict[str, str] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

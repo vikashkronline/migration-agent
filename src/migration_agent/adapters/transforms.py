@@ -232,8 +232,12 @@ class AngularJsDirectiveExtractor(ComponentExtractorPort):
         kebab_name = _to_kebab_case(raw_name)
         tag_name = f"app-{kebab_name}"
 
-        # Detect inputs from isolate scope or bindings (e.g. scope: { name: '@' })
+        # Detect inputs and outputs from isolate scope or bindings
         inputs: list[str] = []
+        outputs: list[str] = []
+        input_types: dict[str, str] = {}
+        state_types: dict[str, str] = {}
+
         scope_match = re.search(
             r"(?:scope|bindings)\s*:\s*\{([^}]+)\}", component_source, re.DOTALL
         )
@@ -241,25 +245,48 @@ class AngularJsDirectiveExtractor(ComponentExtractorPort):
             scope_body = scope_match.group(1)
             for item in re.finditer(r"([a-zA-Z0-9_]+)\s*:\s*['\"]([@=&<])['\"]", scope_body):
                 prop = item.group(1)
-                if prop not in inputs:
-                    inputs.append(prop)
+                kind = item.group(2)
+                if kind == "&":
+                    if prop not in outputs:
+                        outputs.append(prop)
+                else:
+                    if prop not in inputs:
+                        inputs.append(prop)
+                    if kind == "@":
+                        input_types[prop] = "string"
+                    elif prop in ("limit", "count", "id", "total"):
+                        input_types[prop] = "number"
+                    elif prop.endswith("s") or prop.endswith("List"):
+                        input_types[prop] = "any[]"
+                    else:
+                        input_types[prop] = "string"
 
         # Detect template expressions e.g. {{name}} or {{$ctrl.name}} or {{vm.name}}
         for tm in re.finditer(r"\{\{(?:vm\.|\$ctrl\.|ctrl\.)?([a-zA-Z0-9_]+)\}\}", template_source):
             var_name = tm.group(1)
             if var_name not in inputs:
                 inputs.append(var_name)
+                input_types[var_name] = "string"
 
         # Detect state properties e.g. scope.isExpanded = false; or $ctrl.isExpanded = false;
         state_properties: list[str] = []
         state_pattern = re.compile(
-            r"(?:\$scope|scope|vm|\$ctrl|ctrl)\.([a-zA-Z0-9_]+)\s*=\s*(false|true|['\"].*?['\"]|\d+)\s*;",
+            r"(?:\$scope|scope|vm|\$ctrl|ctrl)\.([a-zA-Z0-9_]+)\s*=\s*(false|true|['\"].*?['\"]|\d+|\[\])\s*;",
             re.MULTILINE,
         )
         for sm in state_pattern.finditer(component_source):
             prop_name = sm.group(1)
+            val = sm.group(2).strip()
             if prop_name not in state_properties:
                 state_properties.append(prop_name)
+            if val in ("true", "false"):
+                state_types[prop_name] = "boolean"
+            elif val.isdigit():
+                state_types[prop_name] = "number"
+            elif val.startswith("["):
+                state_types[prop_name] = "any[]"
+            else:
+                state_types[prop_name] = "string"
 
         # Detect action methods e.g. scope.toggleDetails = function() or $ctrl.toggle = function()
         methods: list[str] = []
@@ -272,12 +299,41 @@ class AngularJsDirectiveExtractor(ComponentExtractorPort):
             if method_name not in methods:
                 methods.append(method_name)
 
+        # Detect injected services from controller
+        injected_services: list[str] = []
+        ctrl_match = re.search(
+            r"controller\s*:\s*(?:\[([^\]]+)\]|function\s*\(([^)]*)\))", component_source
+        )
+        if ctrl_match:
+            raw_deps = ctrl_match.group(1) or ctrl_match.group(2)
+            if raw_deps:
+                for dep in re.finditer(r"['\"]?([a-zA-Z0-9_$]+)['\"]?", raw_deps):
+                    dep_name = dep.group(1).strip()
+                    if (
+                        dep_name
+                        and dep_name
+                        not in ("$scope", "$element", "$attrs", "$transclude", "function")
+                        and not dep_name.startswith("$")
+                    ):
+                        svc_class = _to_pascal_case(dep_name)
+                        if not svc_class.endswith("Service"):
+                            svc_class = f"{svc_class}Service"
+                        if svc_class not in injected_services:
+                            injected_services.append(svc_class)
+                    elif dep_name == "$http":
+                        if "HttpClient" not in injected_services:
+                            injected_services.append("HttpClient")
+
         return IntermediateComponent(
             name=name,
             tag_name=tag_name,
             inputs=tuple(sorted(inputs)),
+            outputs=tuple(sorted(outputs)),
+            input_types=input_types,
             state_properties=tuple(sorted(state_properties)),
+            state_types=state_types,
             methods=tuple(sorted(methods)),
+            injected_services=tuple(sorted(injected_services)),
             template_raw=template_source,
             style_raw=style_source,
             metadata={"source_framework": "angularjs-directive"},
@@ -386,19 +442,60 @@ class AngularStandaloneComponentRenderer(ComponentRendererPort):
     """Renders modern Angular 17+ standalone components conforming to project Angular standards."""
 
     def render_component_ts(self, component: IntermediateComponent) -> str:
-        """Render standalone TypeScript component class with OnPush and Signals."""
+        """Render standalone TypeScript component class with OnPush, Signals, and DI."""
         kebab_name = _to_kebab_case(component.name)
-        inputs_code = "\n".join(
-            f"  readonly {inp} = input<string>('');" for inp in component.inputs
-        )
 
-        state_code = "\n".join(
-            f"  readonly {prop} = signal<boolean>(false);" for prop in component.state_properties
-        )
+        # Inputs
+        inputs_lines: list[str] = []
+        for inp in component.inputs:
+            t = component.input_types.get(inp, "string")
+            default_val = (
+                "''"
+                if t == "string"
+                else ("0" if t == "number" else ("[]" if t == "any[]" else "false"))
+            )
+            inputs_lines.append(f"  readonly {inp} = input<{t}>({default_val});")
+        inputs_code = "\n".join(inputs_lines)
 
+        # Outputs
+        outputs_lines = [f"  readonly {out} = output<any>();" for out in component.outputs]
+        outputs_code = "\n".join(outputs_lines)
+
+        # State signals
+        state_lines: list[str] = []
+        for prop in component.state_properties:
+            t = component.state_types.get(prop, "boolean")
+            default_val = (
+                "false"
+                if t == "boolean"
+                else ("0" if t == "number" else ("[]" if t == "any[]" else "''"))
+            )
+            state_lines.append(f"  readonly {prop} = signal<{t}>({default_val});")
+        state_code = "\n".join(state_lines)
+
+        # Injected services
+        service_imports: list[str] = []
+        injected_fields: list[str] = []
+        for svc in component.injected_services:
+            if svc == "HttpClient":
+                service_imports.append("import { HttpClient } from '@angular/common/http';")
+                injected_fields.append("  private readonly http = inject(HttpClient);")
+            else:
+                svc_kebab = _to_kebab_case(svc)
+                if svc_kebab.endswith("-service"):
+                    svc_kebab = svc_kebab[:-8]
+                service_imports.append(
+                    f"import {{ {svc} }} from '../../services/{svc_kebab}.service';"
+                )
+                field_name = svc[:1].lower() + svc[1:]
+                injected_fields.append(f"  private readonly {field_name} = inject({svc});")
+
+        service_imports_block = ("\n" + "\n".join(service_imports)) if service_imports else ""
+        injected_fields_block = ("\n".join(injected_fields) + "\n\n") if injected_fields else ""
+
+        # Methods
         methods_code: list[str] = []
         for method in component.methods:
-            # Map toggle action to reactive signal update
             if "toggle" in method.lower():
                 prop_target = (
                     component.state_properties[0] if component.state_properties else "isExpanded"
@@ -412,11 +509,34 @@ class AngularStandaloneComponentRenderer(ComponentRendererPort):
                 methods_code.append(
                     f"  {method}(): void {{\n    // Handled by component logic\n  }}"
                 )
-
         methods_block = "\n\n".join(methods_code)
 
+        core_imports = ["ChangeDetectionStrategy", "Component"]
+        if component.injected_services:
+            core_imports.append("inject")
+        if component.inputs:
+            core_imports.append("input")
+        if component.outputs:
+            core_imports.append("output")
+        if component.state_properties or not component.inputs:
+            core_imports.append("signal")
+        core_imports_str = ", ".join(sorted(set(core_imports)))
+
+        class_body_sections = [
+            s
+            for s in (
+                injected_fields_block.strip(),
+                inputs_code,
+                outputs_code,
+                state_code,
+                methods_block,
+            )
+            if s
+        ]
+        class_body = "\n\n".join(class_body_sections)
+
         return (
-            "import { ChangeDetectionStrategy, Component, input, signal } from '@angular/core';\n\n"
+            f"import {{ {core_imports_str} }} from '@angular/core';{service_imports_block}\n\n"
             "@Component({\n"
             f"  selector: '{component.tag_name}',\n"
             "  standalone: true,\n"
@@ -425,14 +545,22 @@ class AngularStandaloneComponentRenderer(ComponentRendererPort):
             "  changeDetection: ChangeDetectionStrategy.OnPush,\n"
             "})\n"
             f"export class {component.name}Component {{\n"
-            f"{inputs_code}\n\n"
-            f"{state_code}\n\n"
-            f"{methods_block}\n"
+            f"{class_body}\n"
             "}\n"
         )
 
     def render_template_html(self, component: IntermediateComponent) -> str:
         """Render HTML template with native Angular control flow (@if) and Bootstrap 5 utilities."""
+        is_angularjs = component.metadata.get("source_framework") in (
+            "angularjs-directive",
+            "angularjs-component",
+        ) or any(
+            x in component.template_raw
+            for x in ("ng-if", "ng-show", "ng-repeat", "ng-click", "$ctrl", "vm.")
+        )
+        if is_angularjs and component.template_raw and component.template_raw.strip():
+            return self.migrate_template(component.template_raw, component)
+
         kebab_name = _to_kebab_case(component.name)
         header_expr = f"{component.inputs[0]}()" if component.inputs else "'Details'"
         html = (
@@ -505,13 +633,19 @@ class AngularStandaloneComponentRenderer(ComponentRendererPort):
             return self.render_template_html(component)
 
         res = template_raw
-        # 1. Bootstrap 3/4 to Bootstrap 5
+
+        # 1. Bootstrap 3/4 to Bootstrap 5 utility classes
         res = re.sub(r"\bpull-right\b", "ms-auto", res)
         res = re.sub(r"\bpull-left\b", "me-auto", res)
         res = re.sub(r"\bhidden-xs\b", "d-none d-sm-block", res)
         res = re.sub(r"\bcol-xs-([0-9]+)\b", r"col-\1", res)
 
-        # 2. ng-click to (click)
+        # 2. Upgrade bare container to include card styling if missing
+        kebab_name = _to_kebab_case(component.name)
+        if f'class="{kebab_name}"' in res and "card" not in res:
+            res = res.replace(f'class="{kebab_name}"', f'class="{kebab_name} card p-3 shadow-sm"')
+
+        # 3. ng-click to (click)
         res = re.sub(
             r'ng-click=["\'](?:vm\.|\$ctrl\.|ctrl\.)?([a-zA-Z0-9_]+)\((.*?)\)["\']',
             r'(click)="\1(\2)"',
@@ -523,28 +657,77 @@ class AngularStandaloneComponentRenderer(ComponentRendererPort):
             res,
         )
 
-        # 3. ng-if and ng-show to @if
+        # 4. ng-submit to (ngSubmit)
         res = re.sub(
-            r'<([a-zA-Z0-9_-]+)\s+([^>]*?)ng-(?:if|show)=["\']'
-            r'(?:vm\.|\$ctrl\.|ctrl\.)?([a-zA-Z0-9_]+)["\']([^>]*)>',
+            r'ng-submit=["\'](?:vm\.|\$ctrl\.|ctrl\.)?([a-zA-Z0-9_]+)\((.*?)\)["\']',
+            r'(ngSubmit)="\1(\2)"',
+            res,
+        )
+
+        # 5. ng-model to [(ngModel)]
+        res = re.sub(
+            r'ng-model=["\'](?:vm\.|\$ctrl\.|ctrl\.)?([a-zA-Z0-9_]+)["\']',
+            r'[(ngModel)]="\1"',
+            res,
+        )
+
+        # 6. ng-if and ng-show to @if
+        def _replace_ng_if(m: re.Match[str]) -> str:
+            tag = m.group(1)
+            before = m.group(2)
+            cond = m.group(3)
+            after = m.group(4)
+            inner = m.group(5)
+            tag_attrs = f"{before}{after}".strip()
+            tag_open = f"<{tag} {tag_attrs}>" if tag_attrs else f"<{tag}>"
+            return f"@if ({cond}()) {{\n  {tag_open}{inner}</{tag}>\n}}"
+
+        res = re.sub(
+            r'<([a-zA-Z0-9_-]+)([^>]*?)\s+ng-(?:if|show)=["\'](?:vm\.|\$ctrl\.|ctrl\.)?([a-zA-Z0-9_]+)["\']([^>]*)>(.*?)</\1>',
+            _replace_ng_if,
+            res,
+            flags=re.DOTALL,
+        )
+
+        # Fallback for self-closing or unclosed single line ng-if
+        res = re.sub(
+            r'<([a-zA-Z0-9_-]+)\s+([^>]*?)ng-(?:if|show)=["\'](?:vm\.|\$ctrl\.|ctrl\.)?([a-zA-Z0-9_]+)["\']([^>]*)>',
             r"@if (\3()) {\n  <\1 \2\4>",
             res,
         )
 
-        # 4. ng-repeat to @for
-        def _replace_ng_repeat(m: re.Match[str]) -> str:
-            track = m.group(5) or f"{m.group(3)}.id"
-            return (
-                f"@for ({m.group(3)} of {m.group(4)}(); track {track}) {{\n"
-                f"  <{m.group(1)} {m.group(2)}{m.group(6)}>"
-            )
+        # 7. ng-repeat to @for
+        def _replace_ng_repeat_full(m: re.Match[str]) -> str:
+            tag = m.group(1)
+            before = m.group(2)
+            item = m.group(3)
+            collection = m.group(4)
+            track = m.group(5) or f"{item}.id"
+            after = m.group(6)
+            inner = m.group(7)
+            tag_attrs = f"{before}{after}".strip()
+            tag_open = f"<{tag} {tag_attrs}>" if tag_attrs else f"<{tag}>"
+            loop_hdr = f"@for ({item} of {collection}(); track {track}) {{"
+            return f"{loop_hdr}\n  {tag_open}{inner}</{tag}>\n}}"
 
         res = re.sub(
-            r'<([a-zA-Z0-9_-]+)\s+([^>]*?)ng-repeat=["\']([a-zA-Z0-9_]+)\s+in\s+'
-            r'(?:vm\.|\$ctrl\.|ctrl\.)?([a-zA-Z0-9_]+)(?:\s+track\s+by\s+([a-zA-Z0-9_.]+))?["\']([^>]*)>',
-            _replace_ng_repeat,
+            r'<([a-zA-Z0-9_-]+)([^>]*?)\s+ng-repeat=["\']([a-zA-Z0-9_]+)\s+in\s+(?:vm\.|\$ctrl\.|ctrl\.)?([a-zA-Z0-9_]+)(?:\s+track\s+by\s+([a-zA-Z0-9_.]+))?["\']([^>]*)>(.*?)</\1>',
+            _replace_ng_repeat_full,
             res,
+            flags=re.DOTALL,
         )
+
+        # 8. Signal expressions in interpolations {{ ... }}
+        all_signals = set(component.inputs) | set(component.state_properties)
+
+        def _replace_interpolation(m: re.Match[str]) -> str:
+            expr = m.group(1).strip()
+            clean_expr = re.sub(r"^(?:vm\.|\$ctrl\.|ctrl\.)", "", expr)
+            if clean_expr in all_signals:
+                return f"{{{{ {clean_expr}() }}}}"
+            return f"{{{{ {clean_expr} }}}}"
+
+        res = re.sub(r"\{\{([^}]+)\}\}", _replace_interpolation, res)
 
         return res
 

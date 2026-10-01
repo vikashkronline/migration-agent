@@ -617,4 +617,42 @@ uv run migration-agent doctor
 Exit code 0; emitted schema-versioned JSON with status "ok" checking google-genai, openai-agents, pydantic, pydantic-settings, typer.
 ```
 
+## Phase 13 — Complete
 
+Scope: Semantic Transformation Engine & Template Fidelity (Second Wave Hardening):
+- Intermediate Component Typing & Capability Expansion (`ports/transformation.py`):
+  - Expanded `IntermediateComponent` with typed properties: `injected_services: tuple[str, ...]`, `outputs: tuple[str, ...]`, `input_types: dict[str, str]`, `state_types: dict[str, str]`.
+- Rich Semantic Extraction (`adapters/transforms.py`):
+  - `AngularJsDirectiveExtractor.extract`: parses controller injection arguments, filters framework-internal dependencies (`$scope`, `$element`, `$attrs`), and identifies application service dependencies.
+  - Extracts isolate scope bindings: typed inputs (`@`, `<`, `=`), outputs (`&`), and detects template expressions (`{{var}}`, `{{$ctrl.var}}`, `{{vm.var}}`).
+  - Detects state property literal types (`boolean`, `number`, `any[]`) for typed signal initialization.
+- Modern Angular 17+ Standalone Rendering Fidelity (`adapters/transforms.py`):
+  - `render_component_ts`: renders typed inputs (`readonly name = input<string>('');`), typed state signals (`readonly isExpanded = signal<boolean>(false);`), outputs (`readonly update = output<any>();`), and modern Angular DI (`private readonly svc = inject(Svc);`).
+  - `render_template_html`: dispatches to `migrate_template` for AngularJS components with template sources, preserving real DOM structures while modernizing directives.
+  - `migrate_template`: converts Bootstrap 3/4 classes to Bootstrap 5 (`ms-auto`, `col-*`), converts events to `(click)`/`(ngSubmit)`, converts `ng-if` to modern `@if (...) { ... }` blocks, converts `ng-repeat` to `@for (...) { ... }` with tracking keys, and resolves signal function invocations (`{{ prop() }}`) while protecting loop variable references.
+- Step-Bounded Transformation Scoping (`application/transformation.py`):
+  - Enhanced `TransformationService.preview()` to support step-bounded filtering when `step_id` is provided. Matches component and service bundles against `target_step.expected_files`, names, and source files, producing clean, isolated ChangeSets for incremental step execution.
+- Test Suite & Verification:
+  - Comprehensive unit and contract tests verifying template preservation, signal resolution, typed DI, and step-bounded scoping.
+
+Completed on 2026-10-02 using `uv` and an isolated CPython 3.12.14 environment. The required evidence is:
+
+```text
+uv sync --all-groups
+Resolved 69 packages; checked 68 packages.
+
+uv run pytest
+324 passed, 2 skipped in 375.33s (0:06:15)
+
+uv run ruff check .
+All checks passed!
+
+uv run ruff format --check .
+165 files already formatted.
+
+uv run mypy src
+Success: no issues found in 74 source files
+
+uv run migration-agent doctor
+Exit code 0; emitted schema-versioned JSON with status "ok" checking google-genai, openai-agents, pydantic, pydantic-settings, typer.
+```
