@@ -72,6 +72,16 @@ from migration_agent.domain import (
     compute_plan_digest,
     verify_approval,
 )
+from migration_agent.packaging import (
+    cloak_prompt_string,
+    decloak_prompt_string,
+    generate_release_manifest,
+    get_binary_packaging_spec,
+    load_release_manifest,
+    save_release_manifest,
+    verify_release_manifest,
+    write_pyinstaller_spec_file,
+)
 from migration_agent.ports import (
     AgentRuntimePort,
     CommandRunnerPort,
@@ -81,7 +91,8 @@ from migration_agent.ports import (
 )
 
 app = typer.Typer(
-    help="Controlled, evidence-based code migration tooling.",
+    name="agent",
+    help="Controlled code migration workbench (canonical: agent, alias: migration-agent).",
     no_args_is_help=True,
     pretty_exceptions_enable=False,
 )
@@ -138,6 +149,13 @@ decision_app = typer.Typer(
     pretty_exceptions_enable=False,
 )
 app.add_typer(decision_app, name="decision")
+
+package_app = typer.Typer(
+    help="Distribution packaging, release manifest generation, and binary verification.",
+    no_args_is_help=True,
+    pretty_exceptions_enable=False,
+)
+app.add_typer(package_app, name="package")
 
 _MINIMUM_PYTHON = (3, 12)
 _RUNTIME_DISTRIBUTIONS = (
@@ -2854,6 +2872,158 @@ def ask_question(
         raise typer.Exit(code=1) from err
 
     typer.echo(json.dumps(answer.model_dump(mode="json"), indent=2))
+
+
+@package_app.command("spec")
+def package_spec_command(
+    package_root: Annotated[
+        Path,
+        typer.Option("--package-root", help="Path to project root directory."),
+    ] = Path("."),
+    binary_name: Annotated[
+        str,
+        typer.Option("--binary-name", help="Primary binary executable name."),
+    ] = "agent",
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", "-o", help="Target file path to write PyInstaller .spec file."),
+    ] = None,
+    write: Annotated[
+        bool,
+        typer.Option("--write", help="Whether to write .spec file to disk."),
+    ] = False,
+) -> None:
+    """Generate or write PyInstaller specification for standalone binary bundling."""
+    if write or output is not None:
+        target = write_pyinstaller_spec_file(
+            package_root, output_file=output, binary_name=binary_name
+        )
+        typer.echo(json.dumps({"status": "written", "spec_path": str(target.resolve())}, indent=2))
+    else:
+        spec_dict = get_binary_packaging_spec(package_root, binary_name=binary_name)
+        typer.echo(json.dumps(spec_dict, indent=2))
+
+
+@package_app.command("manifest")
+def package_manifest_command(
+    dist_dir: Annotated[
+        Path,
+        typer.Option("--dist-dir", help="Path to dist directory containing build assets."),
+    ] = Path("dist"),
+    version: Annotated[
+        str,
+        typer.Option("--version", "-v", help="Release version string."),
+    ] = "0.1.0",
+    channel: Annotated[
+        str,
+        typer.Option("--channel", help="Release channel (e.g. stable, beta)."),
+    ] = "stable",
+    canonical_cli: Annotated[
+        str,
+        typer.Option("--canonical-cli", help="Canonical CLI executable name."),
+    ] = "agent",
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", "-o", help="Path to write release-manifest.json."),
+    ] = None,
+    key_id: Annotated[
+        str | None,
+        typer.Option("--key-id", help="Authority key ID for cryptographic signing."),
+    ] = None,
+    private_key: Annotated[
+        str | None,
+        typer.Option("--private-key", help="Private key secret for cryptographic signing."),
+    ] = None,
+) -> None:
+    """Generate cryptographically bound release-manifest.json for distribution assets."""
+    manifest = generate_release_manifest(
+        version=version,
+        dist_dir=dist_dir,
+        release_channel=channel,
+        canonical_cli=canonical_cli,
+        signing_key=private_key,
+        key_id=key_id,
+    )
+    if output is not None:
+        target = save_release_manifest(manifest, output)
+        typer.echo(
+            json.dumps(
+                {
+                    "status": "written",
+                    "manifest_path": str(target.resolve()),
+                    "digest": manifest.manifest_digest,
+                },
+                indent=2,
+            )
+        )
+    else:
+        typer.echo(manifest.model_dump_json(indent=2))
+
+
+@package_app.command("verify")
+def package_verify_command(
+    dist_dir: Annotated[
+        Path,
+        typer.Option("--dist-dir", help="Path to dist directory."),
+    ] = Path("dist"),
+    manifest_path: Annotated[
+        Path,
+        typer.Option("--manifest", "-m", help="Path to release-manifest.json."),
+    ] = Path("dist/release-manifest.json"),
+) -> None:
+    """Verify all published distribution assets against release-manifest.json."""
+    if not manifest_path.is_file():
+        reason_text = f"Manifest not found: {manifest_path}"
+        typer.echo(
+            json.dumps({"valid": False, "reason": reason_text}, indent=2),
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    try:
+        manifest = load_release_manifest(manifest_path)
+    except Exception as err:
+        typer.echo(
+            json.dumps({"valid": False, "reason": f"Failed to parse manifest: {err}"}, indent=2),
+            err=True,
+        )
+        raise typer.Exit(code=1) from err
+
+    valid = verify_release_manifest(manifest, dist_dir)
+    res = {
+        "valid": valid,
+        "version": manifest.version,
+        "assets_checked": len(manifest.assets),
+        "manifest_digest": manifest.manifest_digest,
+        "signed": manifest.signature is not None,
+    }
+    typer.echo(json.dumps(res, indent=2))
+    if not valid:
+        raise typer.Exit(code=1)
+
+
+@package_app.command("cloak")
+def package_cloak_command(
+    prompt: Annotated[
+        str,
+        typer.Argument(help="Sensitive prompt or heuristic string to mask."),
+    ],
+) -> None:
+    """Mask a sensitive prompt or heuristic string for binary packaging."""
+    cloaked = cloak_prompt_string(prompt)
+    typer.echo(cloaked)
+
+
+@package_app.command("decloak")
+def package_decloak_command(
+    cloaked: Annotated[
+        str,
+        typer.Argument(help="Cloaked base64 string to unmask."),
+    ],
+) -> None:
+    """Unmask a cloaked prompt or heuristic string at runtime."""
+    decloaked = decloak_prompt_string(cloaked)
+    typer.echo(decloaked)
 
 
 if __name__ == "__main__":

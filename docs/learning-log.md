@@ -422,3 +422,15 @@ offline verification of component discovery and transformation accuracy:
 1. **Canonical SQLite vs. Derived Exports**: The SQLite checkpoint store remains the authoritative source of truth. External JSONL audit logs cannot create split-brain states; if external JSONL records are deleted or tampered with, SQLite state persists intact and recovers running jobs accurately.
 2. **Subprocess Metacharacter Sanitization**: Both native and containerized command runners strictly inspect arguments for shell metacharacters (`;`, `&`, `|`, `` ` ``, `$`, `\n`, `\r`) before subprocess invocation, preventing command-chaining and shell injection attacks.
 
+## Hardening Milestone — Canonical CLI Binary Alias & Distribution Hardening
+
+### Dual-Executable Canonical Identity & Multi-Binary Aliasing
+1. **Canonical `agent` Identity with Backward Compatibility**: Registering `agent` as the primary executable entry point while retaining `migration-agent` across pyproject console scripts and Typer app identity ensures the platform remains project-neutral while preserving backwards compatibility for legacy installations.
+2. **Deterministic Multi-Binary Linkage**: Creating symmetrical executable links (via hardlinks or binary copies) allows single-source distributions to be accessed identically as `agent` or `migration-agent` on Windows, Linux, and macOS without duplicate build processes.
+3. **Executable Integrity Verification**: Automated magic header inspections (PE `MZ`, ELF `\x7fELF`, Mach-O magics) combined with SHA-256 verification ensure distributed single-file binaries are non-empty, intact, and properly compiled for target platforms before installation.
+
+### Cryptographically Bound Distribution Manifests
+1. **RFC 8785 Canonical Digest Binding**: All published assets in `dist/` are classified deterministically and bound into an RFC 8785 canonical digest. Any modification, re-ordering, or tampering with assets alters the manifest digest immediately.
+2. **Authority Key Release Signing**: Release manifests can be signed out-of-band with Ed25519 or HMAC authority keys (`CryptoSignatureVerifierAdapter`), allowing clients to cryptographically verify release authenticity prior to installation.
+
+

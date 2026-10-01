@@ -573,3 +573,48 @@ uv run migration-agent doctor
 Exit code 0; emitted schema-versioned JSON with status "ok" checking google-genai, openai-agents, pydantic, pydantic-settings, typer.
 ```
 
+## Hardening Milestone — Canonical CLI Binary Alias & Distribution Hardening — Complete
+
+Scope: Canonical `agent` CLI identity, binary packaging pipeline, and cryptographically bound release manifests:
+- Canonical CLI Binary Alias (`agent` + `migration-agent` backward compatibility):
+  - Configured `agent` as the canonical executable entry point with `migration-agent` alias in `pyproject.toml` and CLI group registration.
+  - Symmetrical multi-binary alias creation helper `create_binary_aliases()` supporting hardlinks, symlinks, and copies on Windows/POSIX.
+  - Executable magic header inspection and integrity validation (`verify_binary_integrity()`) supporting PE (`MZ`), ELF (`\x7fELF`), and Mach-O formats.
+- Standalone Binary Build Pipeline (`packaging/build_binary.py`):
+  - Strongly typed `BinaryPackagingSpec` declaring entry points, canonical and alias names, comprehensive hidden imports covering all adapters/domains, data files, LTO, and stripping.
+  - Deterministic PyInstaller `.spec` generator (`generate_pyinstaller_spec()`) and disk writer (`write_pyinstaller_spec_file()`).
+  - Tier-1 platform heuristic and prompt cloaking / decloaking helpers (`cloak_prompt_string()`, `decloak_prompt_string()`).
+- Cryptographically Bound Release Manifest (`packaging/release_manifest.py`):
+  - Schema-versioned `ReleaseManifest` and `ReleaseAsset` models with deterministic asset classification (wheels, executables, source archives, signatures).
+  - RFC 8785 canonical digest computation over release metadata (`compute_manifest_digest()`).
+  - Cryptographic signing and verification integration via `CryptoSignatureVerifierAdapter` supporting Ed25519 and HMAC-SHA256 authority keys.
+  - Manifest persistence and integrity verification (`save_release_manifest()`, `load_release_manifest()`, `verify_release_manifest()`).
+- CLI Packaging Subcommands (`agent package` / `migration-agent package`):
+  - `agent package spec`: generates or outputs PyInstaller build specification JSON.
+  - `agent package manifest`: scans distribution artifacts, computes SHA-256 digests, and generates signed release manifests.
+  - `agent package verify`: verifies published assets against `release-manifest.json`.
+  - `agent package cloak` / `agent package decloak`: masks/unmasks prompt strings.
+
+Completed on 2026-10-02 using `uv` and an isolated CPython 3.12.14 environment. The required evidence is:
+
+```text
+uv sync --all-groups
+Resolved 69 packages; checked 68 packages.
+
+uv run pytest
+322 passed, 2 skipped in 32.94s
+
+uv run ruff check .
+All checks passed!
+
+uv run ruff format --check .
+165 files already formatted.
+
+uv run mypy src
+Success: no issues found in 74 source files
+
+uv run migration-agent doctor
+Exit code 0; emitted schema-versioned JSON with status "ok" checking google-genai, openai-agents, pydantic, pydantic-settings, typer.
+```
+
+
