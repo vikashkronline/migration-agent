@@ -47,6 +47,7 @@ from migration_agent.application import (
     FullStackDiscoveryService,
     InventoryService,
     KnowledgeService,
+    MigrationPipelineService,
     PlanningService,
     ProjectAdoptionService,
     ReportService,
@@ -63,6 +64,7 @@ from migration_agent.domain import (
     AssuranceLevel,
     ChangeSet,
     EvaluationBenchmark,
+    MigrationPlan,
     PlanStatus,
     ProjectInventory,
     RunStatus,
@@ -1249,6 +1251,55 @@ def _create_execution_service(
     )
 
 
+def _create_pipeline_service(
+    checkpoint_store: SqliteCheckpointStore,
+    runner: CommandRunnerPort,
+    governance: GitGovernanceAdapter,
+    settings: Settings,
+    max_repairs: int = 3,
+) -> MigrationPipelineService:
+    trans_service = _create_transformation_service(checkpoint_store)
+    val_service = ValidationService(command_runner=runner, audit_logger=checkpoint_store)
+    repair_service = BoundedRepairService(
+        command_runner=runner,
+        workspace_adapter=LocalWorkspaceAdapter(),
+        validation_service=val_service,
+        audit_logger=checkpoint_store,
+        checkpoint_store=checkpoint_store,
+        max_budget=max_repairs,
+    )
+    report_service = ReportService(checkpoint_store=checkpoint_store, audit_logger=checkpoint_store)
+    runtime = FakeAgentRuntime()
+    inv_service = InventoryService(
+        filesystem=SafeFilesystemInspector(),
+        frameworks=_create_framework_registry(),
+    )
+    analysis_service = AnalysisService(
+        filesystem=SafeFilesystemInspector(),
+        frameworks=_create_framework_registry(),
+        runtime=runtime,
+    )
+    planning_service = PlanningService(
+        runtime=runtime,
+        checkpoint_store=checkpoint_store,
+        audit_logger=checkpoint_store,
+        governance=governance,
+        validator=RuleBasedPlanValidator(max_step_files=settings.max_step_files),
+    )
+    return MigrationPipelineService(
+        checkpoint_store=checkpoint_store,
+        transformation_service=trans_service,
+        validation_service=val_service,
+        repair_service=repair_service,
+        report_service=report_service,
+        planning_service=planning_service,
+        governance=governance,
+        inventory_service=inv_service,
+        analysis_service=analysis_service,
+        audit_logger=checkpoint_store,
+    )
+
+
 @app.command("preview")
 def preview_command(
     path: Annotated[
@@ -1639,6 +1690,206 @@ def apply_command(
             json.dumps(output_payload, separators=(",", ":"), sort_keys=True),
             err=True,
         )
+        raise typer.Exit(code=2)
+
+
+@app.command("migrate")
+def migrate_command(
+    path: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            help="Target repository path to migrate.",
+        ),
+    ],
+    step: Annotated[
+        str | None,
+        typer.Option(
+            "--step",
+            "-s",
+            help="Optional specific step ID within the migration plan.",
+        ),
+    ] = None,
+    plan_id: Annotated[
+        str | None,
+        typer.Option(
+            "--plan",
+            "-p",
+            help="Optional existing migration plan ID to execute.",
+        ),
+    ] = None,
+    auto_approve: Annotated[
+        bool,
+        typer.Option(
+            "--auto-approve",
+            help="Automatically approve the migration plan (Mode B) without prompting.",
+        ),
+    ] = False,
+    skip_validation: Annotated[
+        bool,
+        typer.Option(
+            "--skip-validation",
+            help="Skip compiler and test validation gates.",
+        ),
+    ] = False,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Generate preview changes and diff summary without modifying files.",
+        ),
+    ] = False,
+    allow_dirty: Annotated[
+        bool,
+        typer.Option(
+            "--allow-dirty",
+            help="Allow migration on working trees with uncommitted changes (Invariant 25).",
+        ),
+    ] = False,
+    actor: Annotated[
+        str,
+        typer.Option(
+            "--actor",
+            "-a",
+            help="Actor executing the migration.",
+        ),
+    ] = "operator",
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "--output",
+            "-o",
+            file_okay=False,
+            help="Directory to save run reports and audit artifacts.",
+        ),
+    ] = None,
+    staging_root: Annotated[
+        Path | None,
+        typer.Option(
+            "--staging-root",
+            help="Custom root directory for staging workspaces.",
+        ),
+    ] = None,
+    state_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--state-dir",
+            help="Custom directory for SQLite checkpoints and audit log.",
+        ),
+    ] = None,
+    fake_runner: Annotated[
+        bool,
+        typer.Option(
+            "--fake-runner",
+            help="Use deterministic FakeCommandRunner for offline verification.",
+        ),
+    ] = False,
+    fail_validation: Annotated[
+        bool,
+        typer.Option(
+            "--fail-validation",
+            help="Simulate validation failure in fake runner.",
+        ),
+    ] = False,
+    max_repairs: Annotated[
+        int,
+        typer.Option(
+            "--max-repairs",
+            help="Maximum repair attempts budget.",
+        ),
+    ] = 3,
+) -> None:
+    """Execute end-to-end unified migration pipeline with approval and self-repair."""
+    settings = Settings()
+    effective_state_dir = settings.resolve_state_dir(state_dir)
+    effective_staging_root = settings.resolve_staging_root(staging_root)
+    checkpoint_store = SqliteCheckpointStore(effective_state_dir)
+    governance = GitGovernanceAdapter()
+
+    runner: CommandRunnerPort
+    if fake_runner:
+        runner = FakeCommandRunner(
+            default_status=ValidationStatus.FAILED if fail_validation else ValidationStatus.PASSED,
+            default_exit_code=1 if fail_validation else 0,
+            default_output=(
+                "Simulated failure diagnostic: syntax error in component"
+                if fail_validation
+                else "All checks passed."
+            ),
+            diagnostics=("syntax error in component",) if fail_validation else (),
+        )
+    else:
+        runner = SubprocessCommandRunner()
+
+    pipeline_service = _create_pipeline_service(
+        checkpoint_store=checkpoint_store,
+        runner=runner,
+        governance=governance,
+        settings=settings,
+        max_repairs=max_repairs,
+    )
+
+    def interactive_confirm(plan: MigrationPlan) -> bool:
+        if not sys.stdin.isatty():
+            return False
+        typer.echo(f"\nMigration Plan '{plan.plan_id}' generated:")
+        typer.echo(f"- Steps count: {len(plan.steps)}")
+        for s in plan.steps:
+            typer.echo(f"  * [{s.step_id}] {s.title} (Risk: {s.risk.value})")
+        return typer.confirm("\nApprove plan and execute migration?", default=True)
+
+    report_output_dir = output or (effective_state_dir / "reports")
+
+    try:
+        result = pipeline_service.migrate(
+            project_path=path,
+            step_id=step,
+            plan_id=plan_id,
+            auto_approve=auto_approve,
+            skip_validation=skip_validation,
+            dry_run=dry_run,
+            allow_dirty=allow_dirty,
+            staging_root=effective_staging_root,
+            output_dir=report_output_dir,
+            actor=actor,
+            confirm_callback=interactive_confirm if not auto_approve else None,
+        )
+    except Exception as err:
+        typer.echo(
+            json.dumps({"error": str(err), "status": "error"}, separators=(",", ":")),
+            err=True,
+        )
+        raise typer.Exit(code=2) from err
+
+    payload: dict[str, object] = {
+        "applied_paths": list(result.applied_paths),
+        "changeset_digest": result.changeset_digest,
+        "changeset_id": result.changeset_id,
+        "diagnostics": list(result.diagnostics),
+        "dry_run": result.dry_run,
+        "json_report_path": result.json_report_path,
+        "md_report_path": result.md_report_path,
+        "plan_id": result.plan_id,
+        "repair_attempts_count": result.repair_attempts_count,
+        "run_id": result.run_id,
+        "status": result.status,
+        "step_id": result.step_id,
+        "validation_checks_count": result.validation_checks_count,
+        "validation_status": result.validation_status,
+    }
+    if result.backup_snapshot_path:
+        payload["backup_snapshot_path"] = result.backup_snapshot_path
+
+    if result.status in ("ok", "dry_run"):
+        typer.echo(json.dumps(payload, separators=(",", ":"), sort_keys=True))
+    elif result.status == "aborted":
+        typer.echo(json.dumps(payload, separators=(",", ":"), sort_keys=True), err=True)
+        raise typer.Exit(code=1)
+    else:
+        typer.echo(json.dumps(payload, separators=(",", ":"), sort_keys=True), err=True)
         raise typer.Exit(code=2)
 
 
@@ -2254,6 +2505,13 @@ def eval_command(
         bool,
         typer.Option("--with-specialists", help="Run benchmark with specialist subagents enabled."),
     ] = False,
+    semantic: Annotated[
+        bool,
+        typer.Option(
+            "--semantic",
+            help="Include compilation, spec pass rate, and control flow fidelity evaluation.",
+        ),
+    ] = False,
 ) -> None:
     """Execute offline evaluation benchmark against synthetic fixtures."""
     fixture_path = path or (Path("tests") / "fixtures" / "ember-classic-mini")
@@ -2285,29 +2543,47 @@ def eval_command(
         frameworks=_create_framework_registry(),
     )
     coordinator = SpecialistCoordinator(FakeAgentRuntime()) if with_specialists else None
+    trans_service = (
+        TransformationService(
+            workspace_adapter=LocalWorkspaceAdapter(),
+            registry=_create_framework_registry(),
+            filesystem=SafeFilesystemInspector(),
+        )
+        if semantic
+        else None
+    )
     eval_service = EvaluationService(
         inventory_service=inventory_service,
         specialist_coordinator=coordinator,
+        transformation_service=trans_service,
     )
     if with_specialists:
         result, specialist_metric = eval_service.run_specialist_benchmark(
-            benchmark, fixture_path=fixture_path
+            benchmark, fixture_path=fixture_path, semantic=semantic
         )
     else:
-        result = eval_service.run_benchmark(benchmark, fixture_path=fixture_path)
+        result = eval_service.run_benchmark(benchmark, fixture_path=fixture_path, semantic=semantic)
         specialist_metric = None
+
+    metrics_dict: dict[str, object] = {
+        "duration_ms": result.metrics.duration_ms,
+        "f1_score": result.metrics.f1_score,
+        "passed": result.metrics.passed,
+        "precision": result.metrics.precision,
+        "recall": result.metrics.recall,
+        "repair_count": result.metrics.repair_count,
+    }
+    if result.metrics.compilation_pass_rate is not None:
+        metrics_dict["compilation_pass_rate"] = result.metrics.compilation_pass_rate
+    if result.metrics.spec_pass_rate is not None:
+        metrics_dict["spec_pass_rate"] = result.metrics.spec_pass_rate
+    if result.metrics.control_flow_fidelity is not None:
+        metrics_dict["control_flow_fidelity"] = result.metrics.control_flow_fidelity
 
     payload: dict[str, object] = {
         "benchmark_id": result.benchmark_id,
         "detected_components": list(result.detected_components),
-        "metrics": {
-            "duration_ms": result.metrics.duration_ms,
-            "f1_score": result.metrics.f1_score,
-            "passed": result.metrics.passed,
-            "precision": result.metrics.precision,
-            "recall": result.metrics.recall,
-            "repair_count": result.metrics.repair_count,
-        },
+        "metrics": metrics_dict,
         "missed_components": list(result.missed_components),
         "run_id": result.run_id,
         "status": "ok" if result.metrics.passed else "failed",

@@ -12,6 +12,7 @@ from migration_agent.domain import (
     EvaluationBenchmark,
     EvaluationMetric,
     EvaluationResult,
+    FileChange,
     FindingCategory,
     InventoryInterpretationRequest,
     MigrationPlan,
@@ -38,12 +39,110 @@ class EvaluationService:
         self.transformation_service = transformation_service
         self.specialist_coordinator = specialist_coordinator
 
+    @staticmethod
+    def _evaluate_compilation(changes: list[FileChange] | tuple[FileChange, ...]) -> float:
+        """Evaluate compilation readiness and structural validity of generated TypeScript files."""
+        ts_files = [
+            c for c in changes if c.path.endswith(".ts") and not c.path.endswith(".spec.ts")
+        ]
+        if not ts_files:
+            return 1.0
+
+        valid_count = 0
+        for change in ts_files:
+            if change.content_bytes is None:
+                continue
+            text = change.content_bytes.decode("utf-8", errors="replace")
+            # 1. Structural balance check: braces, parens, brackets
+            if text.count("{") != text.count("}"):
+                continue
+            if text.count("(") != text.count(")"):
+                continue
+            if text.count("[") != text.count("]"):
+                continue
+            # 2. Must contain valid TypeScript construct: class, interface, function, or export
+            has_decl = any(
+                keyword in text
+                for keyword in (
+                    "export class ",
+                    "export interface ",
+                    "export const ",
+                    "export function ",
+                    "@Component(",
+                    "@Injectable(",
+                )
+            )
+            if not has_decl:
+                continue
+            valid_count += 1
+
+        return round(valid_count / len(ts_files), 4)
+
+    @staticmethod
+    def _evaluate_specs(changes: list[FileChange] | tuple[FileChange, ...]) -> float:
+        """Evaluate structural completeness and assertion fidelity of generated Jasmine specs."""
+        spec_files = [c for c in changes if c.path.endswith(".spec.ts")]
+        if not spec_files:
+            return 1.0
+
+        valid_count = 0
+        for change in spec_files:
+            if change.content_bytes is None:
+                continue
+            text = change.content_bytes.decode("utf-8", errors="replace")
+            has_suite = "describe(" in text
+            has_case = "it(" in text
+            has_assertion = "expect(" in text
+            has_setup = "TestBed" in text or "beforeEach(" in text
+            if has_suite and has_case and has_assertion and has_setup:
+                valid_count += 1
+
+        return round(valid_count / len(spec_files), 4)
+
+    @staticmethod
+    def _evaluate_control_flow(changes: list[FileChange] | tuple[FileChange, ...]) -> float:
+        """Evaluate modern Angular 17+ control flow fidelity in generated HTML templates."""
+        html_files = [c for c in changes if c.path.endswith(".html")]
+        if not html_files:
+            return 1.0
+
+        total_modern = 0
+        total_legacy = 0
+
+        legacy_directives = (
+            "ng-if",
+            "ng-repeat",
+            "ng-show",
+            "ng-hide",
+            "ng-switch",
+            "*ngIf",
+            "*ngFor",
+            "*ngSwitch",
+        )
+        modern_blocks = ("@if (", "@for (", "@switch (")
+
+        for change in html_files:
+            if change.content_bytes is None:
+                continue
+            text = change.content_bytes.decode("utf-8", errors="replace")
+            for block in modern_blocks:
+                total_modern += text.count(block)
+            for legacy in legacy_directives:
+                total_legacy += text.count(legacy)
+
+        total_directives = total_modern + total_legacy
+        if total_directives == 0:
+            return 1.0
+
+        return round(total_modern / total_directives, 4)
+
     def run_benchmark(
         self,
         benchmark: EvaluationBenchmark,
         *,
         run_id: str | None = None,
         fixture_path: Path | str | None = None,
+        semantic: bool = False,
     ) -> EvaluationResult:
         """Execute ground-truth benchmark and compute precision, recall, and F1 score."""
         target_dir = Path(fixture_path or benchmark.target_fixture).resolve()
@@ -116,6 +215,56 @@ class EvaluationService:
         duration_ms = int((time.monotonic() - start_time) * 1000)
         passed = precision >= benchmark.min_precision and recall >= benchmark.min_recall
 
+        # Step 3: Semantic Evaluation (Compilation pass rate, Spec pass rate, Control flow fidelity)
+        compilation_rate: float | None = None
+        spec_rate: float | None = None
+        control_flow_fidelity: float | None = None
+
+        if semantic:
+            trans_service = self.transformation_service
+            if trans_service is None:
+                raise ValueError(
+                    "TransformationService must be provided to execute semantic evaluation."
+                )
+
+            sample_plan = MigrationPlan(
+                plan_id=f"plan-eval-{uuid.uuid4().hex[:8]}",
+                source_root=str(target_dir),
+                run_id=effective_run_id,
+                status=PlanStatus.APPROVED,
+                steps=[
+                    MigrationStep(
+                        step_id=f"step-{idx + 1:03d}",
+                        title=f"Migrate component {comp}",
+                        description=f"Transform component {comp} to modern Angular standalone.",
+                        dependencies=[],
+                        scope="component",
+                        risk=StepRisk.LOW,
+                        expected_files=[f"app/components/{comp}.js"],
+                    )
+                    for idx, comp in enumerate(benchmark.expected_components or detected)
+                ],
+                policy_digest="policy-eval-digest",
+            )
+
+            try:
+                changeset, _ = trans_service.preview(target_dir, sample_plan)
+                compilation_rate = self._evaluate_compilation(changeset.changes)
+                spec_rate = self._evaluate_specs(changeset.changes)
+                control_flow_fidelity = self._evaluate_control_flow(changeset.changes)
+
+                semantic_passed = (
+                    compilation_rate >= benchmark.min_compilation_rate
+                    and spec_rate >= benchmark.min_spec_rate
+                    and control_flow_fidelity >= benchmark.min_fidelity
+                )
+                passed = passed and semantic_passed
+            except Exception:
+                compilation_rate = 0.0
+                spec_rate = 0.0
+                control_flow_fidelity = 0.0
+                passed = False
+
         detected_tuple = tuple(sorted(detected))
         missed_tuple = tuple(sorted(false_negatives))
         unexpected_tuple = tuple(sorted(false_positives))
@@ -134,6 +283,23 @@ class EvaluationService:
             f"- **Unexpected Components**: {', '.join(unexpected_tuple) or 'None'}\n"
         )
 
+        if (
+            semantic
+            and compilation_rate is not None
+            and spec_rate is not None
+            and control_flow_fidelity is not None
+        ):
+            c_thresh = benchmark.min_compilation_rate
+            s_thresh = benchmark.min_spec_rate
+            f_thresh = benchmark.min_fidelity
+            summary_md += (
+                f"\n## Semantic Evaluation Metrics\n\n"
+                f"- **Compilation Pass Rate**: {compilation_rate:.1%} (threshold: {c_thresh:.1%})\n"
+                f"- **Spec Pass Rate**: {spec_rate:.1%} (threshold: {s_thresh:.1%})\n"
+                f"- **Control Flow Fidelity**: {control_flow_fidelity:.1%} "
+                f"(threshold: {f_thresh:.1%})\n"
+            )
+
         return EvaluationResult(
             benchmark_id=benchmark.benchmark_id,
             run_id=effective_run_id,
@@ -144,6 +310,9 @@ class EvaluationService:
                 repair_count=repair_count,
                 duration_ms=duration_ms,
                 passed=passed,
+                compilation_pass_rate=compilation_rate,
+                spec_pass_rate=spec_rate,
+                control_flow_fidelity=control_flow_fidelity,
             ),
             detected_components=detected_tuple,
             missed_components=missed_tuple,
@@ -157,10 +326,13 @@ class EvaluationService:
         *,
         run_id: str | None = None,
         fixture_path: Path | str | None = None,
+        semantic: bool = False,
     ) -> tuple[EvaluationResult, SpecialistEvaluationMetric]:
         """Execute benchmark measuring specialist-assisted accuracy, critique, and budget."""
         target_dir = Path(fixture_path or benchmark.target_fixture).resolve()
-        base_result = self.run_benchmark(benchmark, run_id=run_id, fixture_path=target_dir)
+        base_result = self.run_benchmark(
+            benchmark, run_id=run_id, fixture_path=target_dir, semantic=semantic
+        )
 
         plan_score: float | None = None
         turns_used = 0

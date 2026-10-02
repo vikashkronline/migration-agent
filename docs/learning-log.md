@@ -462,4 +462,24 @@ offline verification of component discovery and transformation accuracy:
 3. **Spec TestBed Mocking**: In modern Angular, testing services using `HttpClient` requires `provideHttpClient()` and `provideHttpClientTesting()`. The repair strategy injects these providers directly into `TestBed.configureTestingModule({ providers: [...] })` when `NullInjectorError` is detected.
 4. **Invariant 26 Preservation**: Every repair attempt creates a new `ChangeSet` with a fresh `changeset_id` and fresh canonical RFC 8785 digest. The candidate patch is validated against the step's `allowed_scope` before application.
 
+## Phase 15 — Streamlined Migration Pipeline & Semantic Evaluation
+
+### Unified Migration Pipeline Orchestration (`MigrationPipelineService`)
+1. **End-to-End Coordination Without Abstraction Leaks**:
+   `MigrationPipelineService` coordinates the full lifecycle: preflight checks -> Git clean working tree verification (Invariant 25) -> `.agent/` governance adoption validation -> DAG plan generation -> Mode B cryptographic sign-off -> isolated staging workspace materialization -> allowlisted validation with bounded self-repair -> ADR-8 4-step controlled apply with verified backup/rollback -> dual-tier reporting (human markdown + machine JSONL). Application services strictly maintain inward dependencies, taking needed ports and services via dependency injection rather than importing concrete infrastructure adapters.
+2. **Deterministic Working Tree Guardrails & Overrides**:
+   Applying changes to a dirty git working tree risks clobbering untracked human modifications or entangling migration diffs with unrelated working state. The pipeline enforces clean working trees by default, providing explicit `--allow-dirty` overrides for local test runs.
+3. **Dry-Run & Step-Wise Review Safeguards**:
+   The unified pipeline honors `--dry-run` to preview generated `ChangeSet` proposals without staging execution or disk writes, and `--step` to execute one plan step at a time, keeping changes reviewable and granular.
+
+### Semantic Evaluation & Structural Fidelity Benchmarks
+1. **Beyond Pure String Diffing**:
+   Traditional migration evaluation relied on token overlap or exact character diffs against ground truth stubs, which falsely penalized valid code structural improvements (such as adding Bootstrap 5 utility classes or formatting differences). Semantic evaluation assesses migration output through three deterministic quality pillars:
+   - `compilation_pass_rate`: Validates that migrated TypeScript and HTML files have balanced structural delimiters (curly braces, parentheses, angle brackets) and declare valid standalone component or class exports.
+   - `spec_pass_rate`: Measures Jasmine/Karma test completeness by verifying the presence of `describe`, `it`, `expect`, and `TestBed` configuration blocks.
+   - `control_flow_fidelity`: Quantifies modernization fidelity by measuring the ratio of Angular 17+ control flow blocks (`@if`, `@for`, `@switch`) versus legacy AngularJS directives (`ng-if`, `ng-repeat`, `ng-show`, `*ngIf`).
+2. **Targeted Specialist Benchmark Harnesses**:
+   The evaluation service supports running benchmarks with `--semantic` flags across all adapters or specialized agent teams, producing structured reports with clear pass/fail status against defined thresholds (`min_compilation_rate`, `min_spec_rate`, `min_fidelity`).
+
+
 

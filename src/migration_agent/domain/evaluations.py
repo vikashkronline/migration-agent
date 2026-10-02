@@ -16,6 +16,9 @@ class EvaluationMetric(BaseModel):
     repair_count: int = Field(ge=0)
     duration_ms: int = Field(ge=0)
     passed: bool
+    compilation_pass_rate: float | None = Field(default=None, ge=0.0, le=1.0)
+    spec_pass_rate: float | None = Field(default=None, ge=0.0, le=1.0)
+    control_flow_fidelity: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
 class EvaluationBenchmark(BaseModel):
@@ -31,6 +34,9 @@ class EvaluationBenchmark(BaseModel):
     expected_files: tuple[str, ...] = Field(default_factory=tuple)
     min_precision: float = Field(default=0.8, ge=0.0, le=1.0)
     min_recall: float = Field(default=0.8, ge=0.0, le=1.0)
+    min_compilation_rate: float = Field(default=0.8, ge=0.0, le=1.0)
+    min_spec_rate: float = Field(default=0.8, ge=0.0, le=1.0)
+    min_fidelity: float = Field(default=0.8, ge=0.0, le=1.0)
 
     @classmethod
     def default_ember_mini(

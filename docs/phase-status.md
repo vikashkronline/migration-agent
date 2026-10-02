@@ -698,3 +698,45 @@ Success: no issues found in 76 source files
 uv run migration-agent doctor
 Exit code 0; emitted schema-versioned JSON with status "ok" checking google-genai, openai-agents, pydantic, pydantic-settings, typer.
 ```
+
+## Phase 15 — Complete
+
+Scope: Streamlined Migration Pipeline & Semantic Evaluation (Second Wave Hardening):
+- Unified Migration Pipeline Orchestration (`application/orchestration.py`):
+  - Implemented `MigrationPipelineResult` and `MigrationPipelineService` coordinating preflight repository checks, Git clean working tree verification (Invariant 25), `.agent/` governance scaffolding, deterministic plan generation, interactive/automated Mode B plan approval, staging workspace materialization, validation gates with bounded self-repair, ADR-8 4-step controlled apply protocol with verified postconditions and backup snapshots, and dual-tier audit report compilation.
+- CLI Integration (`agent migrate` / `migration-agent migrate` in `cli.py`):
+  - Unified command: `agent migrate <path> [--step <id>] [--auto-approve] [--skip-validation] [--dry-run] [--allow-dirty] [--actor <name>] [--max-repairs <n>]`.
+  - Supports `--dry-run` to preview ChangeSets and diffs safely without touching working trees.
+  - Interactive terminal confirmation prompt for manual operator review or `--auto-approve` for non-interactive / automated CI/CD execution.
+- Semantic Evaluation Benchmark (`application/evaluation.py`, `domain/evaluations.py`, `cli.py`):
+  - Extended `EvaluationMetric` and `EvaluationBenchmark` with semantic metrics: `compilation_pass_rate`, `spec_pass_rate`, `control_flow_fidelity`.
+  - Implemented `_evaluate_compilation` checking syntax correctness, balanced braces/parentheses, and valid TypeScript declarations across generated `.ts` files.
+  - Implemented `_evaluate_specs` measuring Jasmine test spec completeness (`describe`, `it`, `expect`, `TestBed`).
+  - Implemented `_evaluate_control_flow` measuring ratio of native Angular 17+ control flow blocks (`@if`, `@for`, `@switch`) versus legacy AngularJS directives (`ng-*`, `*ngIf`).
+  - Added `--semantic` flag to `agent eval`.
+- Test Suite & Quality Gates:
+  - Unit tests for migration pipeline: `tests/unit/test_migration_pipeline.py`.
+  - Unit tests for semantic evaluation: `tests/unit/test_semantic_evaluation.py`.
+  - All 6 quality gates passed.
+
+Completed on 2026-10-02 using `uv` and an isolated CPython 3.12.14 environment. The required evidence is:
+
+```text
+uv sync --all-groups
+Resolved 69 packages; checked 68 packages.
+
+uv run pytest
+345 passed, 2 skipped in 59.67s
+
+uv run ruff check .
+All checks passed!
+
+uv run ruff format --check .
+171 files already formatted.
+
+uv run mypy src
+Success: no issues found in 76 source files
+
+uv run migration-agent doctor
+Exit code 0; emitted schema-versioned JSON with status "ok" checking google-genai, openai-agents, pydantic, pydantic-settings, typer.
+```

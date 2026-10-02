@@ -15,7 +15,11 @@ from migration_agent.application.fullstack_service import (
 )
 from migration_agent.application.inventory import InventoryService
 from migration_agent.application.knowledge import KnowledgeService
-from migration_agent.application.orchestration import ResumableExecutionService
+from migration_agent.application.orchestration import (
+    MigrationPipelineResult,
+    MigrationPipelineService,
+    ResumableExecutionService,
+)
 from migration_agent.application.planning import PlanningService
 from migration_agent.application.qa import ContextualQAService
 from migration_agent.application.repair_strategies import (
@@ -55,6 +59,8 @@ __all__ = [
     "FullStackDiscoveryService",
     "InventoryService",
     "KnowledgeService",
+    "MigrationPipelineResult",
+    "MigrationPipelineService",
     "PlanValidationResult",
     "PlanningService",
     "ProjectAdoptionService",
