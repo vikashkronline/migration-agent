@@ -3,6 +3,11 @@
 from migration_agent.application.adoption import AdoptionReport, ProjectAdoptionService
 from migration_agent.application.analysis import AnalysisService, SnapshotFileReader
 from migration_agent.application.control_service import ControlApiService
+from migration_agent.application.diagnostics import (
+    DiagnosticCategory,
+    StructuredDiagnostic,
+    parse_diagnostics,
+)
 from migration_agent.application.evaluation import EvaluationService
 from migration_agent.application.fullstack_service import (
     CrossDomainLinker,
@@ -13,6 +18,14 @@ from migration_agent.application.knowledge import KnowledgeService
 from migration_agent.application.orchestration import ResumableExecutionService
 from migration_agent.application.planning import PlanningService
 from migration_agent.application.qa import ContextualQAService
+from migration_agent.application.repair_strategies import (
+    AutoImportRepairStrategy,
+    DeterministicRepairEngine,
+    RepairStrategy,
+    SignalCallRepairStrategy,
+    SpecTestBedRepairStrategy,
+    SyntaxLintRepairStrategy,
+)
 from migration_agent.application.specialists import (
     DeterministicPlanCriticAggregator,
     DeterministicRepairDiagnosticianAggregator,
@@ -29,12 +42,15 @@ from migration_agent.application.validator import PlanValidationResult, RuleBase
 __all__ = [
     "AdoptionReport",
     "AnalysisService",
+    "AutoImportRepairStrategy",
     "BoundedRepairService",
     "ContextualQAService",
     "ControlApiService",
     "CrossDomainLinker",
     "DeterministicPlanCriticAggregator",
     "DeterministicRepairDiagnosticianAggregator",
+    "DeterministicRepairEngine",
+    "DiagnosticCategory",
     "EvaluationService",
     "FullStackDiscoveryService",
     "InventoryService",
@@ -42,11 +58,17 @@ __all__ = [
     "PlanValidationResult",
     "PlanningService",
     "ProjectAdoptionService",
+    "RepairStrategy",
     "ReportService",
     "ResumableExecutionService",
     "RuleBasedPlanValidator",
+    "SignalCallRepairStrategy",
     "SnapshotFileReader",
+    "SpecTestBedRepairStrategy",
     "SpecialistCoordinator",
+    "StructuredDiagnostic",
+    "SyntaxLintRepairStrategy",
     "TransformationService",
     "ValidationService",
+    "parse_diagnostics",
 ]

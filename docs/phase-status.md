@@ -656,3 +656,45 @@ Success: no issues found in 74 source files
 uv run migration-agent doctor
 Exit code 0; emitted schema-versioned JSON with status "ok" checking google-genai, openai-agents, pydantic, pydantic-settings, typer.
 ```
+
+## Phase 14 — Complete
+
+Scope: Actionable Diagnostic-Driven Self-Repair Engine (Second Wave Hardening):
+- Structured Diagnostic Parser (`application/diagnostics.py`):
+  - Parses raw compiler (`tsc`), linter (ESLint), and test runner (Jasmine/Karma) stderr/stdout into typed `StructuredDiagnostic` instances.
+  - Categorizes errors into `DiagnosticCategory` (`MISSING_IMPORT`, `SIGNAL_CALL_MISSING`, `SPEC_MOCK_MISSING`, `SYNTAX_ERROR`, `UNKNOWN`).
+  - Extracts affected file path, line numbers, error codes (TS2304, TS2551, TS1005, TS2552, NullInjectorError), missing symbols, and suggestions.
+- Surgical Deterministic Repair Strategies (`application/repair_strategies.py`):
+  - `AutoImportRepairStrategy`: Automatically detects missing imports and synthesizes correct import statements. Maps well-known symbols (`Component`, `signal`, `input`, `output`, `inject`, `HttpClient`, `Observable`, etc.) to standard libraries (`@angular/core`, `@angular/common/http`, `rxjs`), merging into existing import declarations when present. For application services, searches across changeset diffs and workspace files for exported classes and generates relative POSIX imports (`./...` or `../...`).
+  - `SignalCallRepairStrategy`: Detects uninvoked signal access (TS2551 / TS2339) in `.ts` class methods and `.html` templates and converts property access to signal calls (`this.prop` -> `this.prop()`, `{{ prop }}` -> `{{ prop() }}`).
+  - `SpecTestBedRepairStrategy`: Catches `NullInjectorError: No provider for _HttpClient` in generated Jasmine test specs and inserts `provideHttpClient()` and `provideHttpClientTesting()` into `TestBed.configureTestingModule({ providers: [...] })`.
+  - `SyntaxLintRepairStrategy`: Surgical insertion of missing semicolons and trimming of whitespace.
+  - `DeterministicRepairEngine`: Orchestrates strategies in precedence order, filtering candidate changesets strictly against `allowed_scope`.
+- Bounded Self-Repair Loop Integration (`application/validation.py`):
+  - Integrated `DeterministicRepairEngine` directly into `BoundedRepairService.run_repair_loop`.
+  - Deterministic surgical repair takes precedence over specialist diagnostician or default fallback, avoiding LLM calls for deterministic compilation/test failures while preserving Invariant 26 (fresh ChangeSet IDs, RFC 8785 digests, allowed scope boundary).
+- Test Suite & Quality Gates:
+  - Unit tests for all diagnostic patterns and deterministic repair strategies (`test_diagnostic_parser.py`, `test_deterministic_repair_strategies.py`).
+  - All 6 quality gates passed.
+
+Completed on 2026-10-02 using `uv` and an isolated CPython 3.12.14 environment. The required evidence is:
+
+```text
+uv sync --all-groups
+Resolved 69 packages; checked 68 packages.
+
+uv run pytest
+337 passed, 2 skipped in 56.61s
+
+uv run ruff check .
+All checks passed!
+
+uv run ruff format --check .
+169 files already formatted.
+
+uv run mypy src
+Success: no issues found in 76 source files
+
+uv run migration-agent doctor
+Exit code 0; emitted schema-versioned JSON with status "ok" checking google-genai, openai-agents, pydantic, pydantic-settings, typer.
+```

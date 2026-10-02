@@ -450,4 +450,16 @@ offline verification of component discovery and transformation accuracy:
 ### Step-Bounded Incremental Transformation Scoping
 1. **Incremental ChangeSet Isolation**: Running whole-project transformation across all components simultaneously creates massive diffs that violate step review boundaries. By resolving `MigrationStep.expected_files`, titles, and source file paths in `TransformationService.preview(..., step_id=...)`, each execution step generates a clean, isolated ChangeSet containing only the targeted component or service suite.
 
+## Phase 14 — Actionable Diagnostic-Driven Self-Repair Engine
+
+### Deterministic vs. Probabilistic Self-Repair Hierarchy
+1. **Deterministic Precedence**: Model-based self-repair (via specialist agents) is flexible but stochastic, slow, and resource-intensive. When compiler errors are mechanical (e.g. missing import statements, uninvoked signal access, missing test bed providers, or missing semicolons), deterministic surgical repair strategies should execute first.
+2. **Deterministic Fall-Through**: If deterministic strategies cannot resolve the issue or fail to produce a valid change within `allowed_scope`, the repair loop seamlessly falls through to the specialist `RepairDiagnostician` (LLM-based) and then to the default heuristic patcher.
+
+### Surgical Repair Strategies & POSIX Relative Resolution
+1. **Workspace Symbol Discovery for Auto-Imports**: Beyond standard Angular/RxJS library imports, missing symbols often reference newly migrated sibling components or services within the project. By scanning both the proposed `ChangeSet` diffs and the staging workspace on disk for `export class/interface/type/const <Symbol>`, the strategy discovers source declarations and calculates relative POSIX import paths (`./...` or `../...`) dynamically.
+2. **Signal Call Resolution**: Angular signals require getter invocation `prop()` in TypeScript methods and templates. TS2551/TS2339 diagnostics referencing signals are parsed to identify the symbol name, and property accesses (`this.name` or `{{ name }}`) are rewritten to function calls (`this.name()` or `{{ name() }}`).
+3. **Spec TestBed Mocking**: In modern Angular, testing services using `HttpClient` requires `provideHttpClient()` and `provideHttpClientTesting()`. The repair strategy injects these providers directly into `TestBed.configureTestingModule({ providers: [...] })` when `NullInjectorError` is detected.
+4. **Invariant 26 Preservation**: Every repair attempt creates a new `ChangeSet` with a fresh `changeset_id` and fresh canonical RFC 8785 digest. The candidate patch is validated against the step's `allowed_scope` before application.
+
 
