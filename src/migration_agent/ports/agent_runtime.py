@@ -11,6 +11,7 @@ from migration_agent.domain import (
     MigrationStep,
     ProjectInventory,
 )
+from migration_agent.domain.knowledge import ArchitecturalDecisionRecord
 
 
 class AnalysisRequest(BaseModel):
@@ -33,6 +34,7 @@ class PlanningRequest(BaseModel):
 
     inventory: ProjectInventory
     analysis: AnalysisResult
+    accepted_decisions: tuple[ArchitecturalDecisionRecord, ...] = Field(default=(), max_length=50)
     provider: str = "gemini"
     model: str = Field(min_length=1)
     max_turns: int = Field(default=10, ge=1)

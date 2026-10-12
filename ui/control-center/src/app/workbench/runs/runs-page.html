@@ -1,0 +1,61 @@
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+  <h1 id="content-heading" class="h3 d-flex align-items-center gap-2" tabindex="-1">
+    <cc-icon name="play-circle" />
+    <span>Runs and tasks</span>
+  </h1>
+  <a class="btn btn-sm btn-outline-secondary" [routerLink]="['../items', store.selection().nodeId]"
+    >Return to selected item</a
+  >
+</div>
+<p>
+  {{total()}} recorded tasks across this project's runs. Open a task for its exact current evidence.
+</p>
+@if (error()) {<cc-feedback
+  title="Run context unavailable"
+  [message]="error()"
+  retryLabel="Retry run context"
+  (retry)="retry()"
+/>}
+<div class="table-responsive">
+  <table class="table align-middle">
+    <caption>
+      Recorded task contexts
+    </caption>
+    <thead>
+      <tr>
+        <th scope="col">Task</th>
+        <th scope="col">Run</th>
+        <th scope="col">State</th>
+      </tr>
+    </thead>
+    <tbody>
+      @for (item of items(); track item.node_id) {
+      <tr>
+        <th scope="row"><a [routerLink]="['../items', item.node_id]">{{item.label}}</a></th>
+        <td class="small text-break">{{item.run_id ?? 'Not started'}}</td>
+        <td>
+          <cc-status-badge
+            [status]="item.status"
+            [tone]="item.status_tone ?? 'neutral'"
+            [kind]="item.kind"
+            [taskCount]="item.task_count"
+          />
+        </td>
+      </tr>
+      } @empty {
+      <tr>
+        <td colspan="3">No recorded task scope.</td>
+      </tr>
+      }
+    </tbody>
+  </table>
+</div>
+@if (loading()) {
+<p role="status">Loading task contexts…</p>
+} @if (next() !== null) {<button
+  class="btn btn-outline-primary"
+  [disabled]="loading()"
+  (click)="more()"
+>
+  Load more task contexts</button
+>}

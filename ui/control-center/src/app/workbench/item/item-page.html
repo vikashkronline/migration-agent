@@ -1,0 +1,41 @@
+@if (store.detailLoading()) {
+<p role="status" aria-live="polite">Loading selected evidence…</p>
+} @if (store.detailError(); as error) {<cc-feedback
+  title="Selected context unavailable"
+  [message]="error.message"
+  retryLabel="Open current item"
+  (retry)="openCurrent()"
+/>} @if (store.detail(); as detail) {
+<div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
+  <div>
+    <div
+      class="small text-primary text-uppercase fw-semibold d-inline-flex align-items-center gap-1"
+    >
+      <cc-icon [name]="getNodeIcon(detail.node)" size="0.9em" />
+      <span>{{detail.node.kind}}</span>
+    </div>
+    <h1 id="content-heading" class="h3" tabindex="-1">{{detail.node.label}}</h1>
+  </div>
+  <cc-status-badge
+    [status]="detail.node.status"
+    [tone]="detail.node.status_tone ?? 'neutral'"
+    [kind]="detail.node.kind"
+    [taskCount]="detail.node.task_count"
+  />
+</div>
+<nav class="d-flex flex-wrap gap-1 border-bottom pb-2 mb-3" aria-label="Item sections">
+  @for (tab of tabs(); track tab.path) {
+  <a
+    class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
+    [routerLink]="tab.path"
+    queryParamsHandling="preserve"
+    routerLinkActive="active"
+    ariaCurrentWhenActive="page"
+  >
+    <cc-icon [name]="tab.icon" size="0.9em" />
+    <span>{{tab.label}}</span>
+  </a>
+  }
+</nav>
+<router-outlet />
+@if (detail.node.kind === 'task') {<cc-workflow-actions />} }

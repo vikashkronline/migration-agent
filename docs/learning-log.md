@@ -1,5 +1,23 @@
 # Learning Log
 
+## 2026-10-07 — Common Control Center and canonical evidence
+
+A generic navigation shell can consume current migration workflows without making
+frameworks part of its application query model. Missing project-readiness entities
+must stay unknown; folder existence and run counts cannot stand in for feature
+acceptance. Transaction-scoped invalidation makes independent CLI/MCP updates
+visible without trusting a process-local broadcast as durable truth.
+
+Approval links must pin the artifact, and confirmations must pin their selected
+detail. Browser/session authentication cannot replace human approval. Replaying a
+request should recover its durable receipt, not execute a source change again.
+Angular's HTML sanitizer removes SVG: strict Mermaid output displayed as an image
+keeps diagrams usable without bypassing document-HTML sanitization or enabling
+interactive callbacks. Visual inspection also caught Angular's optimized stylesheet
+loader using an inline `onload` blocked by CSP. Disabling critical-CSS inlining
+preserves the script policy; tests must assert actual responsive visibility and
+rendered theme, not merely working click handlers and theme attributes.
+
 ## Phase 0
 
 The project starts with an inward dependency direction: user-facing delivery mechanisms
@@ -483,3 +501,113 @@ offline verification of component discovery and transformation accuracy:
 
 
 
+
+## 2026-10-04 — Phase 16 remediation and remaining implementation
+
+A static executable template does not isolate code invoked by npm scripts. Host validation therefore fails closed unless a preinstalled pinned container image is configured. Plan signatures cannot stand in for exact ChangeSet approvals. Approval records and backups belong outside source Git; repaired bytes invalidate provenance. A TTY alone cannot prove human intent against arbitrary same-account automation, so Mode B trust is documented and Mode A signers must remain human-controlled. Client configuration documentation does not establish real IDE interoperability.
+
+Live standalone repair must pass the same typed proposal gate as host repair,
+rather than mutating an existing approved staging artifact. Provider guidance is
+restricted to recognized deterministic strategies; unsupported guidance stops.
+Ordinary CLI/MCP startup now imports provider SDKs only on provider selection.
+The earlier Phase 15 description of automated Mode B sign-off does not authorize
+Phase 16 source apply; exact artifact review is a separate human action.
+
+## 2026-10-05: native validation consent and evidence
+
+Docker-free Windows validation requires an explicit account-execution trust
+decision separate from exact source approval. Fixed direct Node entry points
+avoid top-level command wrappers; npm scripts still need the verified Windows
+command processor in the fresh environment. Atomic job assignment closes the
+suspended-process orphan window. Provenance and consent are rechecked at apply;
+fake and legacy evidence require revalidation. [Operations](native-validation.md).
+
+## 2026-10-05: browser evidence is a separate mandatory gate
+
+Command success does not establish UI quality. Real viewport/state screenshots,
+DOM/ARIA facts and complete rule verdicts are now bound to the staged build and
+checked at source approval. Repairs create new artifacts and new capture; optional
+E2E runs last. Chromium needs non-secret Windows known-folder metadata even when
+its browser profile and temporary storage remain fresh. External visual-provider
+transfer was initially blocked pending explicit authorization. The user then
+authorized completing the opt-in adapter. Both providers now share typed evidence,
+fixed destinations, bounded export, fresh consent checks and the same deterministic
+repair/recapture gate. Provider failure cannot degrade required review to a static
+pass. [Operations](browser-ui-ux-validation.md).
+
+## 2026-10-07: generic project work and modular GUI
+
+Project organization is a Git-owned declaration, while operational evidence stays
+in the canonical workflow store. A linked task needs one owner and one stable
+identity; missing evidence must not become executable or verified. Declared
+dependencies explain planning without changing runtime authority. Snapshot identity
+includes declaration changes so confirmations cannot retain stale context.
+
+The Angular GUI now separates core services, shared presentation and lazy feature
+routes. Signals hold view state; RxJS cancels superseded reads and manages polling.
+Native dialog behavior supports the mobile drawer and action confirmation without
+Bootstrap JavaScript. Actual browser CSS checks remain necessary under strict CSP.
+Recorded-fact Q&A provides useful local citations without implicitly exporting source
+to providers. [Frontend guide](../ui/control-center/README.md),
+[project declarations](project-work.md) and [operations](control-center.md).
+
+## 2026-10-07: embedded read-only diff scope
+
+The user selected an embedded read-only viewer while leaving full review workflow
+outside the GUI. Exact historical base content must come from the recorded Git
+object, not the current working file; Git checkout conversion and final newlines
+also need explicit presentation. File reads bind to a server-selected index and
+exact artifact, validate proposed-byte hashes and reject unsupported/oversized
+content without partial diffs. Basic code colouring uses inert text spans.
+Viewing code is an inspection action, separate from human source approval.
+
+## 2026-10-08: technical standards over shared evidence
+
+Reusable control-plane implementations need explicit evidence semantics when
+adapted. Coverage inventory/applicability logic is useful, but populating
+evaluated IDs cannot prove a review occurred. G1 produces actual deterministic
+outcomes, reconciles immutable command execution and records pending manual checks.
+An imported safe-autofix flag grants no mutation authority. Read-only reporting can
+reuse the shared staging/base/policy checks while leaving lifecycle and source
+approval untouched. Source and effective profile provenance remain separate.
+Only reusable technical concepts are embedded in the agent. External reference
+project identity and business-specific details are excluded from runtime profiles,
+prompts and shared knowledge. See [the implementation scope](standards-review.md).
+
+## 2026-10-09: end-user migration acceptance boundaries
+
+Separate project initialization must validate every root pair before governance
+writes. An external session record is useful provenance but does not automatically
+configure later commands or create an executable target foundation. Accepted ADRs
+must reach the planner, including when exports live outside the source. Provider
+context must distinguish architecture precedence from execution authority.
+
+Platform health and migration readiness are different claims: restricted execution
+and missing browser coverage must appear as prerequisites even when doctor passes.
+The current model setting must be recognized alongside its compatibility alias.
+Live provider disclosure and human-only execution/ChangeSet approvals remain
+separate boundaries. See [acceptance hardening](end-user-acceptance-hardening.md).
+
+Repeated basenames are not entity identities. Pod components and their templates
+need stable path-qualified graph IDs; aggregation must reject conflicting IDs
+instead of silently retaining the last node. Diagram identifiers also need to
+preserve distinctions lost by punctuation replacement. Neither lossless identity
+nor an empty edge set certifies complete semantic dependency discovery.
+
+## Signed role authority and Git membership — 2026-10-09
+
+Capability settings are ceilings, not membership. Resolve current stable OS
+identity through signed project roles, and bind durable operations and approvals
+to that principal and access revision. Recheck at worker/file boundaries and before
+replaying receipts. A session token and an actor display label cannot prove owner
+authority. New keys and incoming owners require possession/consent proofs.
+
+Bind directory imports to an owner-approved provider repository ID; otherwise a
+request can substitute a different repository's users. Keep Git roles informative
+and require explicit agent roles. Normalize governance JSON/line endings before
+hashing to avoid Windows checkout noise without accepting ambiguous duplicate keys.
+
+Active policy reads should use an externally pinned verified manifest rather than
+replaying unbounded history under writer locks. Keep access activation independent
+of long validation leases, with access-before-apply ordering. Raw Git enforcement
+requires a trusted remote gate outside candidate code. [Implementation](rbac-and-users.md).

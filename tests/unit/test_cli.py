@@ -18,7 +18,9 @@ def test_doctor_emits_json_and_needs_no_api_key(monkeypatch) -> None:
     payload = json.loads(result.stdout)
     assert payload["schema_version"] == 1
     assert payload["status"] == "ok"
-    assert payload["checks"][2]["details"] == {
+    assert next(check for check in payload["checks"] if check["name"] == "model_configuration")[
+        "details"
+    ] == {
         "configured": False,
         "required_for_doctor": False,
     }

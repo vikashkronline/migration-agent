@@ -33,6 +33,7 @@ from migration_agent.ports.specialists import SpecialistRuntimePort
 from migration_agent.ports.transformation import (
     ComponentExtractorPort,
     ComponentRendererPort,
+    FoundationTransformationPort,
     IntermediateComponent,
     ServiceExtractorPort,
     ServiceRendererPort,
@@ -55,6 +56,7 @@ __all__ = [
     "EventBroadcasterPort",
     "FileReaderPort",
     "FilesystemInspectorPort",
+    "FoundationTransformationPort",
     "FrameworkAdapter",
     "FrameworkAdapterRegistry",
     "GovernancePort",

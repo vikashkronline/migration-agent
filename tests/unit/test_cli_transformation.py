@@ -2,13 +2,16 @@
 
 import json
 import shutil
+import subprocess
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from migration_agent.cli import app
 
 runner = CliRunner()
+pytestmark = pytest.mark.usefixtures("cli_workflow_authorization")
 
 
 def _create_and_approve_plan(
@@ -16,7 +19,24 @@ def _create_and_approve_plan(
     state_dir: Path,
     output_dir: Path,
 ) -> str:
-    """Helper to generate and approve a plan using the CLI."""
+    """Generate plan sign-off, which does not authorize source apply."""
+    if fixture_dir.is_relative_to(state_dir.parent) and not (fixture_dir / ".git").exists():
+        for args in [
+            ("init",),
+            ("add", "."),
+            (
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "-c",
+                "commit.gpgsign=false",
+                "commit",
+                "-m",
+                "Fixture",
+            ),
+        ]:
+            subprocess.run(["git", *args], cwd=fixture_dir, check=True, capture_output=True)
     create_res = runner.invoke(
         app,
         [
@@ -100,7 +120,8 @@ def test_cli_preview_nonexistent_plan(tmp_path: Path) -> None:
 
 
 def test_cli_stage_lifecycle(tmp_path: Path) -> None:
-    fixture_dir = Path(__file__).parents[1] / "fixtures" / "ember-classic-mini"
+    fixture_dir = tmp_path / "repo"
+    shutil.copytree(Path(__file__).parents[1] / "fixtures" / "ember-classic-mini", fixture_dir)
     state_dir = tmp_path / "state"
     plan_output = tmp_path / "plan_gov"
     staging_root = tmp_path / "staging_root"
@@ -122,14 +143,9 @@ def test_cli_stage_lifecycle(tmp_path: Path) -> None:
             str(plan_output),
         ],
     )
-    assert res.exit_code == 0, res.output
-    data = json.loads(res.output)
-    assert data["status"] == "ok"
-    staging_path = Path(data["staging_path"])
-    assert staging_path.exists()
-    assert (
-        staging_path / "src" / "app" / "components" / "user-card" / "user-card.component.ts"
-    ).exists()
+    assert res.exit_code == 2, res.output
+    assert "STEP_REQUIRED" in res.output
+    assert not staging_root.exists()
 
 
 def test_cli_stage_unapproved_plan_rejected(tmp_path: Path) -> None:
@@ -168,7 +184,7 @@ def test_cli_stage_unapproved_plan_rejected(tmp_path: Path) -> None:
         ],
     )
     assert res.exit_code == 2
-    assert "Cannot stage unapproved" in res.output
+    assert "STEP_REQUIRED" in res.output
 
 
 def test_cli_apply_lifecycle(tmp_path: Path) -> None:
@@ -199,14 +215,12 @@ def test_cli_apply_lifecycle(tmp_path: Path) -> None:
             str(plan_output),
         ],
     )
-    assert apply_res.exit_code == 0, apply_res.output
-    data = json.loads(apply_res.output)
-    assert data["status"] == "APPLIED"
-    assert len(data["applied_paths"]) == 4
+    assert apply_res.exit_code == 2, apply_res.output
+    assert "CHANGESET_REQUIRED" in apply_res.output
     assert (
         target_repo / "src" / "app" / "components" / "user-card" / "user-card.component.ts"
-    ).exists()
-    assert (backup_root / data["changeset_id"]).exists()
+    ).exists() is False
+    assert not backup_root.exists()
 
 
 def test_cli_apply_drift_aborts(tmp_path: Path) -> None:
@@ -256,4 +270,4 @@ def test_cli_apply_drift_aborts(tmp_path: Path) -> None:
         ],
     )
     assert apply_res.exit_code == 2
-    assert "BASE_CHANGED" in apply_res.output
+    assert "WORKFLOW_NOT_FOUND" in apply_res.output

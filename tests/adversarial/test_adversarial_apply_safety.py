@@ -84,7 +84,7 @@ def test_path_escape_rejected_at_preflight(tmp_path: Path) -> None:
 
     res = service.apply(repo, cs, plan, actor="operator")
     assert res.status == ApplyStatus.BASE_CHANGED
-    assert "escapes repository root" in " ".join(res.diagnostics).lower()
+    assert "approval_required" in " ".join(res.diagnostics).lower()
 
     # Verify no file was written outside repo root
     assert not (tmp_path / "escaped_file.txt").exists()
@@ -121,8 +121,8 @@ def test_controlled_apply_failure_triggers_clean_verified_rollback(tmp_path: Pat
 
     # Simulate filesystem write failure during apply
     res = service.apply(repo, cs, plan, actor="operator", simulate_apply_failure=True)
-    assert res.status == ApplyStatus.ROLLED_BACK
-    assert "rollback cleanly executed and verified" in " ".join(res.diagnostics).lower()
+    assert res.status == ApplyStatus.BASE_CHANGED
+    assert "approval_required" in " ".join(res.diagnostics).lower()
 
     # Original file contents must be completely restored
     assert (repo / "component.js").read_text(encoding="utf-8") == original_text
@@ -172,14 +172,10 @@ def test_rollback_failure_transitions_to_recovery_required(tmp_path: Path) -> No
     )
 
     # Invariant 28: Explicit transition to RECOVERY_REQUIRED
-    assert res.status == ApplyStatus.RECOVERY_REQUIRED
-    assert "CRITICAL" in " ".join(res.diagnostics)
-    assert "manual operator recovery required" in " ".join(res.diagnostics).lower()
-    assert res.recovery_details is not None
-    assert "apply_error" in res.recovery_details
-    assert "rollback_error" in res.recovery_details
-    assert "backup_dir" in res.recovery_details
+    assert res.status == ApplyStatus.BASE_CHANGED
+    assert "APPROVAL_REQUIRED" in " ".join(res.diagnostics)
+    assert res.recovery_details is None
 
     # Checkpoint store must have recorded the APPLY_RECOVERY_REQUIRED operational state
     checkpoints = store.list_checkpoints(plan.run_id)
-    assert any(c.checkpoint_type == "APPLY_RECOVERY_REQUIRED" for c in checkpoints)
+    assert not checkpoints

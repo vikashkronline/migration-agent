@@ -1,0 +1,784 @@
+{
+  "domains_detected": [
+    "frontend",
+    "infrastructure"
+  ],
+  "graph": {
+    "edges": [],
+    "nodes": [
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/application/template.hbs",
+            "kind": "frontend_component",
+            "path": "app/features/application/template.hbs",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": true
+        },
+        "name": "template",
+        "node_id": "frontend:file:app/features/application/template.hbs",
+        "path": "app/features/application/template.hbs"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/components/decider-penalites-parent/component.js",
+            "kind": "frontend_component",
+            "path": "app/features/components/decider-penalites-parent/component.js",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": false
+        },
+        "name": "component",
+        "node_id": "frontend:file:app/features/components/decider-penalites-parent/component.js",
+        "path": "app/features/components/decider-penalites-parent/component.js"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/components/decider-penalites-parent/detail-ligne-penalite/component.js",
+            "kind": "frontend_component",
+            "path": "app/features/components/decider-penalites-parent/detail-ligne-penalite/component.js",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": false
+        },
+        "name": "component",
+        "node_id": "frontend:file:app/features/components/decider-penalites-parent/detail-ligne-penalite/component.js",
+        "path": "app/features/components/decider-penalites-parent/detail-ligne-penalite/component.js"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/components/decider-penalites-parent/detail-ligne-penalite/template.hbs",
+            "kind": "frontend_component",
+            "path": "app/features/components/decider-penalites-parent/detail-ligne-penalite/template.hbs",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": true
+        },
+        "name": "template",
+        "node_id": "frontend:file:app/features/components/decider-penalites-parent/detail-ligne-penalite/template.hbs",
+        "path": "app/features/components/decider-penalites-parent/detail-ligne-penalite/template.hbs"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/components/decider-penalites-parent/ligne-penalite/component.js",
+            "kind": "frontend_component",
+            "path": "app/features/components/decider-penalites-parent/ligne-penalite/component.js",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": false
+        },
+        "name": "component",
+        "node_id": "frontend:file:app/features/components/decider-penalites-parent/ligne-penalite/component.js",
+        "path": "app/features/components/decider-penalites-parent/ligne-penalite/component.js"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/components/decider-penalites-parent/ligne-penalite/template.hbs",
+            "kind": "frontend_component",
+            "path": "app/features/components/decider-penalites-parent/ligne-penalite/template.hbs",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": true
+        },
+        "name": "template",
+        "node_id": "frontend:file:app/features/components/decider-penalites-parent/ligne-penalite/template.hbs",
+        "path": "app/features/components/decider-penalites-parent/ligne-penalite/template.hbs"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/components/decider-penalites-parent/modal-abandonnee/component.js",
+            "kind": "frontend_component",
+            "path": "app/features/components/decider-penalites-parent/modal-abandonnee/component.js",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": false
+        },
+        "name": "component",
+        "node_id": "frontend:file:app/features/components/decider-penalites-parent/modal-abandonnee/component.js",
+        "path": "app/features/components/decider-penalites-parent/modal-abandonnee/component.js"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/components/decider-penalites-parent/modal-abandonnee/template.hbs",
+            "kind": "frontend_component",
+            "path": "app/features/components/decider-penalites-parent/modal-abandonnee/template.hbs",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": true
+        },
+        "name": "template",
+        "node_id": "frontend:file:app/features/components/decider-penalites-parent/modal-abandonnee/template.hbs",
+        "path": "app/features/components/decider-penalites-parent/modal-abandonnee/template.hbs"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/components/decider-penalites-parent/modal-validation/component.js",
+            "kind": "frontend_component",
+            "path": "app/features/components/decider-penalites-parent/modal-validation/component.js",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": false
+        },
+        "name": "component",
+        "node_id": "frontend:file:app/features/components/decider-penalites-parent/modal-validation/component.js",
+        "path": "app/features/components/decider-penalites-parent/modal-validation/component.js"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/components/decider-penalites-parent/modal-validation/template.hbs",
+            "kind": "frontend_component",
+            "path": "app/features/components/decider-penalites-parent/modal-validation/template.hbs",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": true
+        },
+        "name": "template",
+        "node_id": "frontend:file:app/features/components/decider-penalites-parent/modal-validation/template.hbs",
+        "path": "app/features/components/decider-penalites-parent/modal-validation/template.hbs"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/components/decider-penalites-parent/synthese/component.js",
+            "kind": "frontend_component",
+            "path": "app/features/components/decider-penalites-parent/synthese/component.js",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": false
+        },
+        "name": "component",
+        "node_id": "frontend:file:app/features/components/decider-penalites-parent/synthese/component.js",
+        "path": "app/features/components/decider-penalites-parent/synthese/component.js"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/components/decider-penalites-parent/synthese/template.hbs",
+            "kind": "frontend_component",
+            "path": "app/features/components/decider-penalites-parent/synthese/template.hbs",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": true
+        },
+        "name": "template",
+        "node_id": "frontend:file:app/features/components/decider-penalites-parent/synthese/template.hbs",
+        "path": "app/features/components/decider-penalites-parent/synthese/template.hbs"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/components/decider-penalites-parent/template.hbs",
+            "kind": "frontend_component",
+            "path": "app/features/components/decider-penalites-parent/template.hbs",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": true
+        },
+        "name": "template",
+        "node_id": "frontend:file:app/features/components/decider-penalites-parent/template.hbs",
+        "path": "app/features/components/decider-penalites-parent/template.hbs"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/components/exporter-taux-service-cql-parent/component.js",
+            "kind": "frontend_component",
+            "path": "app/features/components/exporter-taux-service-cql-parent/component.js",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": false
+        },
+        "name": "component",
+        "node_id": "frontend:file:app/features/components/exporter-taux-service-cql-parent/component.js",
+        "path": "app/features/components/exporter-taux-service-cql-parent/component.js"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/components/exporter-taux-service-cql-parent/template.hbs",
+            "kind": "frontend_component",
+            "path": "app/features/components/exporter-taux-service-cql-parent/template.hbs",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": true
+        },
+        "name": "template",
+        "node_id": "frontend:file:app/features/components/exporter-taux-service-cql-parent/template.hbs",
+        "path": "app/features/components/exporter-taux-service-cql-parent/template.hbs"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/components/parametrer-penalites-parent/component.js",
+            "kind": "frontend_component",
+            "path": "app/features/components/parametrer-penalites-parent/component.js",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": false
+        },
+        "name": "component",
+        "node_id": "frontend:file:app/features/components/parametrer-penalites-parent/component.js",
+        "path": "app/features/components/parametrer-penalites-parent/component.js"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/components/parametrer-penalites-parent/delai-de-cloture/component.js",
+            "kind": "frontend_component",
+            "path": "app/features/components/parametrer-penalites-parent/delai-de-cloture/component.js",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": false
+        },
+        "name": "component",
+        "node_id": "frontend:file:app/features/components/parametrer-penalites-parent/delai-de-cloture/component.js",
+        "path": "app/features/components/parametrer-penalites-parent/delai-de-cloture/component.js"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/components/parametrer-penalites-parent/delai-de-cloture/template.hbs",
+            "kind": "frontend_component",
+            "path": "app/features/components/parametrer-penalites-parent/delai-de-cloture/template.hbs",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": true
+        },
+        "name": "template",
+        "node_id": "frontend:file:app/features/components/parametrer-penalites-parent/delai-de-cloture/template.hbs",
+        "path": "app/features/components/parametrer-penalites-parent/delai-de-cloture/template.hbs"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/components/parametrer-penalites-parent/montant-minimum/component.js",
+            "kind": "frontend_component",
+            "path": "app/features/components/parametrer-penalites-parent/montant-minimum/component.js",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": false
+        },
+        "name": "component",
+        "node_id": "frontend:file:app/features/components/parametrer-penalites-parent/montant-minimum/component.js",
+        "path": "app/features/components/parametrer-penalites-parent/montant-minimum/component.js"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/components/parametrer-penalites-parent/montant-minimum/template.hbs",
+            "kind": "frontend_component",
+            "path": "app/features/components/parametrer-penalites-parent/montant-minimum/template.hbs",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": true
+        },
+        "name": "template",
+        "node_id": "frontend:file:app/features/components/parametrer-penalites-parent/montant-minimum/template.hbs",
+        "path": "app/features/components/parametrer-penalites-parent/montant-minimum/template.hbs"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/components/parametrer-penalites-parent/template.hbs",
+            "kind": "frontend_component",
+            "path": "app/features/components/parametrer-penalites-parent/template.hbs",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": true
+        },
+        "name": "template",
+        "node_id": "frontend:file:app/features/components/parametrer-penalites-parent/template.hbs",
+        "path": "app/features/components/parametrer-penalites-parent/template.hbs"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/components/suivre-taux-service-cql-parent/component.js",
+            "kind": "frontend_component",
+            "path": "app/features/components/suivre-taux-service-cql-parent/component.js",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": false
+        },
+        "name": "component",
+        "node_id": "frontend:file:app/features/components/suivre-taux-service-cql-parent/component.js",
+        "path": "app/features/components/suivre-taux-service-cql-parent/component.js"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/components/suivre-taux-service-cql-parent/detail-lignes-commande/component.js",
+            "kind": "frontend_component",
+            "path": "app/features/components/suivre-taux-service-cql-parent/detail-lignes-commande/component.js",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": false
+        },
+        "name": "component",
+        "node_id": "frontend:file:app/features/components/suivre-taux-service-cql-parent/detail-lignes-commande/component.js",
+        "path": "app/features/components/suivre-taux-service-cql-parent/detail-lignes-commande/component.js"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/components/suivre-taux-service-cql-parent/detail-lignes-commande/template.hbs",
+            "kind": "frontend_component",
+            "path": "app/features/components/suivre-taux-service-cql-parent/detail-lignes-commande/template.hbs",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": true
+        },
+        "name": "template",
+        "node_id": "frontend:file:app/features/components/suivre-taux-service-cql-parent/detail-lignes-commande/template.hbs",
+        "path": "app/features/components/suivre-taux-service-cql-parent/detail-lignes-commande/template.hbs"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/components/suivre-taux-service-cql-parent/taux-service-cql/component.js",
+            "kind": "frontend_component",
+            "path": "app/features/components/suivre-taux-service-cql-parent/taux-service-cql/component.js",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": false
+        },
+        "name": "component",
+        "node_id": "frontend:file:app/features/components/suivre-taux-service-cql-parent/taux-service-cql/component.js",
+        "path": "app/features/components/suivre-taux-service-cql-parent/taux-service-cql/component.js"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/components/suivre-taux-service-cql-parent/taux-service-cql/template.hbs",
+            "kind": "frontend_component",
+            "path": "app/features/components/suivre-taux-service-cql-parent/taux-service-cql/template.hbs",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": true
+        },
+        "name": "template",
+        "node_id": "frontend:file:app/features/components/suivre-taux-service-cql-parent/taux-service-cql/template.hbs",
+        "path": "app/features/components/suivre-taux-service-cql-parent/taux-service-cql/template.hbs"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/components/suivre-taux-service-cql-parent/template.hbs",
+            "kind": "frontend_component",
+            "path": "app/features/components/suivre-taux-service-cql-parent/template.hbs",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": true
+        },
+        "name": "template",
+        "node_id": "frontend:file:app/features/components/suivre-taux-service-cql-parent/template.hbs",
+        "path": "app/features/components/suivre-taux-service-cql-parent/template.hbs"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/decider-penalites/detail-ligne-penalite/template.hbs",
+            "kind": "frontend_component",
+            "path": "app/features/decider-penalites/detail-ligne-penalite/template.hbs",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": true
+        },
+        "name": "template",
+        "node_id": "frontend:file:app/features/decider-penalites/detail-ligne-penalite/template.hbs",
+        "path": "app/features/decider-penalites/detail-ligne-penalite/template.hbs"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/decider-penalites/ligne-penalite/template.hbs",
+            "kind": "frontend_component",
+            "path": "app/features/decider-penalites/ligne-penalite/template.hbs",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": true
+        },
+        "name": "template",
+        "node_id": "frontend:file:app/features/decider-penalites/ligne-penalite/template.hbs",
+        "path": "app/features/decider-penalites/ligne-penalite/template.hbs"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/decider-penalites/synthese/template.hbs",
+            "kind": "frontend_component",
+            "path": "app/features/decider-penalites/synthese/template.hbs",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": true
+        },
+        "name": "template",
+        "node_id": "frontend:file:app/features/decider-penalites/synthese/template.hbs",
+        "path": "app/features/decider-penalites/synthese/template.hbs"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/decider-penalites/template.hbs",
+            "kind": "frontend_component",
+            "path": "app/features/decider-penalites/template.hbs",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": true
+        },
+        "name": "template",
+        "node_id": "frontend:file:app/features/decider-penalites/template.hbs",
+        "path": "app/features/decider-penalites/template.hbs"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/exporter-taux-service-cql/template.hbs",
+            "kind": "frontend_component",
+            "path": "app/features/exporter-taux-service-cql/template.hbs",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": true
+        },
+        "name": "template",
+        "node_id": "frontend:file:app/features/exporter-taux-service-cql/template.hbs",
+        "path": "app/features/exporter-taux-service-cql/template.hbs"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/parametrer-penalites/template.hbs",
+            "kind": "frontend_component",
+            "path": "app/features/parametrer-penalites/template.hbs",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": true
+        },
+        "name": "template",
+        "node_id": "frontend:file:app/features/parametrer-penalites/template.hbs",
+        "path": "app/features/parametrer-penalites/template.hbs"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/suivre-taux-service-cql/detail-lignes-commande/template.hbs",
+            "kind": "frontend_component",
+            "path": "app/features/suivre-taux-service-cql/detail-lignes-commande/template.hbs",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": true
+        },
+        "name": "template",
+        "node_id": "frontend:file:app/features/suivre-taux-service-cql/detail-lignes-commande/template.hbs",
+        "path": "app/features/suivre-taux-service-cql/detail-lignes-commande/template.hbs"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/suivre-taux-service-cql/taux-service-cql/template.hbs",
+            "kind": "frontend_component",
+            "path": "app/features/suivre-taux-service-cql/taux-service-cql/template.hbs",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": true
+        },
+        "name": "template",
+        "node_id": "frontend:file:app/features/suivre-taux-service-cql/taux-service-cql/template.hbs",
+        "path": "app/features/suivre-taux-service-cql/taux-service-cql/template.hbs"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/suivre-taux-service-cql/template.hbs",
+            "kind": "frontend_component",
+            "path": "app/features/suivre-taux-service-cql/template.hbs",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": true
+        },
+        "name": "template",
+        "node_id": "frontend:file:app/features/suivre-taux-service-cql/template.hbs",
+        "path": "app/features/suivre-taux-service-cql/template.hbs"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/templates/application.hbs",
+            "kind": "frontend_component",
+            "path": "app/templates/application.hbs",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": true
+        },
+        "name": "application",
+        "node_id": "frontend:file:app/templates/application.hbs",
+        "path": "app/templates/application.hbs"
+      },
+      {
+        "domain": "infrastructure",
+        "entity_type": "container",
+        "evidence": [
+          {
+            "description": "Container specification in docker/sonar.Dockerfile",
+            "kind": "dockerfile",
+            "path": "docker/sonar.Dockerfile",
+            "weight": 0.9
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "base_image": "indus/module-pipeline/front-sonar:release-5.2",
+          "exposed_ports": []
+        },
+        "name": "sonar.Dockerfile",
+        "node_id": "infra:dockerfile:docker",
+        "path": "docker/sonar.Dockerfile"
+      }
+    ]
+  },
+  "repository": {
+    "name": "penalite-frontend",
+    "root": "C:\\Projects\\ISOCEL\\Alice\\Ember\\penalite-frontend"
+  },
+  "schema_version": 1,
+  "summary": {
+    "backend_api": 0,
+    "database_schema": 0,
+    "frontend": 37,
+    "infrastructure": 1,
+    "total_edges": 0,
+    "total_nodes": 38
+  }
+}

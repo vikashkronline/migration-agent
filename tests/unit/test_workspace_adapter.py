@@ -39,7 +39,7 @@ def test_create_staging_rejects_path_traversal(tmp_path: Path) -> None:
     src_dir = tmp_path / "source"
     src_dir.mkdir()
     adapter = LocalWorkspaceAdapter()
-    with pytest.raises(ValueError, match="escapes staging root"):
+    with pytest.raises(ValueError, match="INVALID_ID"):
         adapter.create_staging("../../escaped", src_dir, tmp_path / "staging")
 
 
@@ -66,9 +66,8 @@ def test_create_staging_ignores_symlinks_outside(tmp_path: Path) -> None:
 
     stg_root = tmp_path / "staging"
     adapter = LocalWorkspaceAdapter()
-    ws = adapter.create_staging("run-001", src_dir, stg_root)
-
-    assert not (ws / "leak_symlink").exists()
+    with pytest.raises(ValueError, match="SOURCE_PATH_REJECTED"):
+        adapter.create_staging("run-001", src_dir, stg_root)
 
 
 def test_apply_changeset_materializes_changes(tmp_path: Path) -> None:
@@ -126,7 +125,7 @@ def test_apply_changeset_rejects_escaping_path(tmp_path: Path) -> None:
     )
 
     adapter = LocalWorkspaceAdapter()
-    with pytest.raises(ValueError, match="escapes staging workspace"):
+    with pytest.raises(ValueError, match="INVALID_PATH"):
         adapter.apply_changeset(ws_dir, changeset)
 
 

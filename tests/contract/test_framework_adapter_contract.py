@@ -94,7 +94,11 @@ def test_adapter_source_transformation_contract(adapter: FrameworkAdapter) -> No
 
         # Extraction smoke check with basic inputs
         comp = extractor.extract(
-            component_source="/* dummy */",
+            component_source=(
+                "import Component from '@ember/component'; export default Component.extend({});"
+                if adapter.framework_id == "ember-classic"
+                else "/* dummy */"
+            ),
             template_source="<p>Test</p>",
             style_source="",
         )

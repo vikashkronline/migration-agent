@@ -9,12 +9,12 @@ The platform enforces **strict security invariants**, treating source code as st
 ## Key Features
 
 - **Multi-Framework Detection & Migration**: Converts legacy Ember Classic and AngularJS Directives, Controllers, Templates, and Services to modern Angular Standalone components with Angular Signals, `@if`/`@for` control flow, and Bootstrap 5 utilities.
-- **Unified End-to-End Pipeline (`agent migrate`)**: Single command execution orchestrating preflight checks, plan generation, interactive/automated Mode B sign-off, staging execution, validation gates with bounded self-repair, and verified patch application.
+- **Unified Migration Pipeline (`agent migrate`)**: Preflight, configured-provider planning, isolated staging, and bounded self-repair/validation. Stops for human review of the exact ChangeSet; approved bytes are applied through the shared guarded service.
 - **Actionable Diagnostic Self-Repair**: Autonomous resolution of TypeScript compilation errors (`TS2304` auto-imports), Angular signal invocations (`TS2551`), and Jasmine `TestBed` mocking failures (`NullInjectorError`).
 - **Full-Stack Dependency Discovery**: Read-only discovery of frontend HTTP invocations, backend API routes (FastAPI, Flask, Express), and database schemas (SQL DDL).
-- **Local Control Center Web GUI (`agent ui`)**: Browser-based dashboard on loopback (`http://127.0.0.1:8080`) for visual DAG inspection, live diff reviews, and interactive approvals.
+- **Common Control Center GUI**: Offline Angular 21 project explorer, evidence-based progress, mobile navigation drawer, optional typed Git-owned work definitions and guarded workflow requests. Human approval remains separate in the trusted terminal.
 - **Durable Governance & Curated Knowledge**: Git-native `.agent/` architecture documentation, Architectural Decision Records (`agent decision`), challenge/solution lifecycles (`agent learning`), and contextual Q&A (`agent ask`).
-- **Semantic Evaluation Benchmarking (`agent eval --semantic`)**: Automated verification of compilation pass rates, Jasmine test completeness, and Angular 17+ control flow fidelity.
+- **Semantic Evaluation Benchmarking (`agent eval --semantic`)**: Structural proxy metrics for syntax, spec completeness, and control flow fidelity; these metrics do not execute a compiler or test suite.
 
 ---
 
@@ -28,7 +28,7 @@ Full documentation is organized by persona in the [`docs/`](docs/) directory:
 - 🏛️ **[System Architecture](docs/architecture.md)**: Hexagonal architecture, ports/adapters, storage topology, and cryptographic security protocols.
 - 🛡️ **[Threat Model & Security Invariants](docs/threat-model.md)**: 28 security invariants, isolation boundaries, and fail-closed safety defenses.
 - 📝 **[Learning Log](docs/learning-log.md)**: Chronological architectural decisions and engineering insights across all phases.
-- ✅ **[Phase Verification Status](docs/phase-status.md)**: Quality gate results and test audit logs (345+ tests, 100% green).
+- ✅ **[Phase Verification Status](docs/phase-status.md)**: Current and historical quality gates and remaining acceptance evidence.
 - 🗺️ **[Roadmap](docs/roadmap.md)**: Milestone progression across Phases 0 through 15.
 
 ---
@@ -52,6 +52,16 @@ uv sync --all-groups
 uv run agent doctor
 ```
 
+### Phase 16 MCP server
+
+```bash
+uv run agent mcp serve --project-root /path/to/source --state-dir /path/to/separate/state
+```
+
+The server provides fifteen typed tools for inspection, grounded proposals, durable operations, staging, validation, review requests, and guarded apply. Obtain the opaque project ID from `migration_inventory`; paging fields retrieve large file lists and plan step lists. Source, state, and staging roots must be distinct.
+
+Host proposals, shared headless approval/apply, and preview-first client setup are implemented. Actual Antigravity/Codex compatibility is pending measured verification. See the current [governed migration workflow](docs/migration-workflow.md), [operation guide](docs/phase-16-client-setup.md) and [compatibility evidence](docs/phase-16-smoke-checklists.md).
+
 ### Run a Safe Migration Preview (Dry-Run)
 ```bash
 uv run agent migrate /path/to/legacy-repo --dry-run
@@ -62,10 +72,9 @@ uv run agent migrate /path/to/legacy-repo --dry-run
 uv run agent migrate /path/to/legacy-repo
 ```
 
-### Launch Web Control Center UI
-```bash
-uv run agent ui /path/to/legacy-repo
-```
+The pipeline stops before source apply. Complete the separate human review and
+approval steps in the [workflow guide](docs/phase-16-client-setup.md). Full GUI
+development and acceptance belong to a separate phase.
 
 ---
 
@@ -81,3 +90,46 @@ uv run ruff format --check .
 uv run mypy src
 uv run migration-agent doctor
 ```
+
+## Phase 16 host integration
+
+Antigravity/Codex can supply reasoning through eighteen typed stdio tools while standalone CLI analysis/planning uses the configured provider. Both surfaces share external staging, validation, human exact ChangeSet approval, and guarded apply. Preview client configuration with `agent mcp setup --client codex --project-root <source>` (or `--client antigravity`). See [setup and workflow](docs/phase-16-client-setup.md) and [acceptance evidence](docs/phase-16-smoke-checklists.md). Real IDE acceptance remains pending; this phase includes no GUI implementation.
+
+## Native validation on Windows
+
+Trusted Windows projects can validate without Docker, WSL or Linux using explicit
+`AGENT_VALIDATION_MODE=native`, externally provisioned tools/dependencies, and
+human `agent validation authorize` consent. Source apply still requires separate
+exact approval. Unconfigured projects remain restricted; container mode is optional
+and never falls back to native. See [native operations](docs/native-validation.md).
+
+## Application browser UI/UX validation
+
+Production approval now also requires real browser screenshots and complete AI
+UI/UX review across the declared responsive states, followed by optional E2E last.
+Host review, source comparison and bounded repair share the existing guarded workflow.
+Standalone OpenAI/Gemini visual review is available through an explicit trusted
+launcher export opt-in, with fixed destinations and bounded evidence/code payloads.
+See [browser operations](docs/browser-ui-ux-validation.md).
+
+## Common Control Center
+
+Launch `uv run agent ui /path/to/project` using your workflow's external state and
+staging roots. The browser offers hierarchical dashboards, search/attention,
+checks/artifacts/decisions, runs, health and cited recorded-fact questions.
+Optionally define foundation/module groups and metadata in
+[.agent/project-work.json](docs/project-work.md); declarations never substitute
+for verified workflow evidence. Detailed review and human approval retain their
+IDE/CLI handoffs. See [operations](docs/control-center.md),
+[Angular development](ui/control-center/README.md) and
+[verification](plannings/control-center-implementation-report.md).
+
+## Project Settings
+
+Control Center → **Settings** manages approved provider/model profiles, personal choices,
+environment paths, validation configuration and next-launch directories. Shared settings require
+exact owner approval; routine personal choices stay within signed constraints. `agent config`
+provides equivalent CLI inspection, proposals, checks and recovery. See
+[configuration operations](docs/project-configuration.md) and
+[implementation evidence](plannings/agent-configuration-management-implementation-report.md).
+Settings saves never start migration workflows. Final target directories remain planning only.

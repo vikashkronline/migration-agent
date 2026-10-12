@@ -375,6 +375,11 @@ A full-stack smoke run against `tests/fixtures/fullstack-ecommerce-mini` execute
 
 ## Phase 10 — Complete
 
+Historical scaffolding status from 2026-09-26. The subsequent review found that
+these claims did not establish a production Angular build, canonical cross-process
+progress or exact source approval/apply. The 2026-10-07 common GUI amendment below
+supersedes that wiring and records measured acceptance separately.
+
 Scope: Local Control Center GUI, loopback Control API server, and distribution packaging pipeline (ADR-5, ADR-9).
 - Local Control Center Web GUI:
   - Angular 21 LTS Standalone UI architecture adhering to modern standards (`standalone: true`, `ChangeDetectionStrategy.OnPush`, `@if` / `@for track`, `inject()`, Signals, Bootstrap 5.3 utilities, theme toggle with native dark mode).
@@ -740,3 +745,650 @@ Success: no issues found in 76 source files
 uv run migration-agent doctor
 Exit code 0; emitted schema-versioned JSON with status "ok" checking google-genai, openai-agents, pydantic, pydantic-settings, typer.
 ```
+
+## Phase 16A — Implementation remediated; host spike pending
+
+Scope: Model Context Protocol (MCP) Foundation & Ambient Integration (Subphase 16A — Core Server & Read-Only Inspection):
+- Protocol SDK & Version Negotiation (`pyproject.toml`, `adapters/mcp`):
+  - Pinned official Python MCP SDK: `"mcp>=2.2.0,<3.0.0"` (resolved to `2.2.0`).
+  - Implemented multi-version protocol compatibility supporting legacy revisions (`2024-11-05`, `2025-03-26`) and modern revision (`2026-07-28`).
+- Process-Wide Stdio Stream Isolation (`adapters/mcp/server.py`):
+  - Strict separation of process streams: standard output (`stdout`) dedicated purely to newline-delimited JSON-RPC framing with OS descriptor diversion via MCP stdio server.
+  - Logging diverted to standard error (`stderr`) through `RedactingStreamHandler`; recognized credential patterns are redacted in logs, DTOs, and SDK responses, including validation errors.
+- Project Root Binding & Directory Containment (`adapters/mcp/binding.py`):
+  - Implemented `ProjectBinding` ensuring immutable canonical root resolution (`resolve()`).
+  - Deterministic opaque project IDs include a hash of the canonical root; manifest claims cannot override server identity.
+  - Stored plans/runs and related records must belong to the bound source. Source, state, and staging roots must be separate before opening state writers.
+  - Actual source, companion, manifest, and plan reads reject unsafe paths, links/reparse points, ignored paths, oversized files, and recognized credential content. Fingerprinting uses corresponding containment and read budgets.
+- Read-Only Inspection Tools (`adapters/mcp/tools.py`, `adapters/mcp/models.py`, `adapters/mcp/server.py`):
+  - `migration_doctor()`: Non-invasive diagnostic health checks covering Python runtime, CLI dependencies, and model configurations.
+  - `migration_inventory(project_id)`: Deterministic repository discovery with paged files, dependency enumeration, package boundaries, and detected frameworks.
+  - `migration_run_status(project_id, run_id)`: Durable operational checkpoint status and execution progress query.
+  - `migration_plan_show(project_id, plan_id)`: Paged, display-only plan retrieval with ordered steps, evidence references, and the authoritative plan digest.
+  - `migration_step_preview(project_id, plan_id, step_id)`: Bounded ChangeSet preview and unified diff generation; selected steps constrain generation and generated credential content is rejected before persistence.
+  - A typed local inspection context enforces read capabilities and assurance requirements. Caller arguments cannot mint grants or human approval.
+- CLI Integration (`src/migration_agent/cli.py`):
+  - Added Typer command group `mcp` with `migration-agent mcp serve --project-root <path>` launching the stdio server.
+- Architecture Decoupling (`src/migration_agent/application/doctor.py`):
+  - Extracted diagnostics collection logic to application layer to preserve inward dependency direction and eliminate circular imports.
+- Antigravity & OpenAI Codex Compatibility Spike (`docs/mcp-compatibility-spike.md`):
+  - Corrected the design notes to distinguish SDK test evidence from actual host observations. Antigravity/Codex versions, workflows, and approval-channel measurements remain pending.
+  - Future headless human approval must authorize the exact ChangeSet through `ApplyApprovalRecord`; a local inspection context is not apply approval.
+- Contract Verification Suite (`tests/contract/test_mcp_server.py`):
+  - Expanded automated contracts cover protocol negotiation, schemas, permissions, ownership, bounded inputs, both SDK response representations, validation-error redaction, startup failures, clean EOF, and real subprocess stdio isolation.
+  - Focused unit regressions cover actual read guards, root aliases, credential exclusions, step membership/scope, response budgets, preview persistence, and SQLite connection closure.
+- Quality Gates Passed:
+  - All 6 repository quality gates passed cleanly.
+
+Initial implementation checks recorded on 2026-10-04, before review remediation, using `uv` and an isolated CPython 3.12.14 environment:
+
+```text
+uv sync --all-groups
+Resolved 69 packages; checked 68 packages.
+
+uv run pytest
+354 passed, 2 skipped in 85.57s
+
+uv run ruff check .
+All checks passed!
+
+uv run ruff format --check .
+184 files already formatted.
+
+uv run mypy src
+Success: no issues found in 82 source files
+
+uv run migration-agent doctor
+Exit code 0; emitted schema-versioned JSON with status "ok" checking google-genai, mcp, openai-agents, pydantic, pydantic-settings, typer.
+```
+
+### Phase 16A review remediation — Code complete
+
+Completed the implementation corrections for R01–R09 and R11 from `plannings/phase-16-implementation-review-report.md`. R10 documentation is corrected; actual host compatibility acceptance remains pending. See `docs/phase-16a-remediation.md` for architecture decisions, boundary limits, and finding disposition.
+
+Plan creation now persists the inspected source root even when `--output` points elsewhere. Older plans with an incorrect source root must be regenerated and approved again. Project identifiers now use the canonical-root namespace; clients should obtain IDs from the current server.
+
+All six required commands passed on Windows with Python 3.12.14 on 2026-10-04. Tests use disposable local fixtures and synthetic credentials and do not require network access or `OPENAI_API_KEY`. Linux and actual IDE sessions were not exercised in this remediation.
+
+```text
+uv sync --all-groups
+Resolved 69 packages; checked 68 packages.
+
+uv run pytest
+402 passed, 2 skipped in 39.37s
+
+uv run ruff check .
+All checks passed!
+
+uv run ruff format --check .
+189 files already formatted.
+
+uv run mypy src
+Success: no issues found in 83 source files
+
+uv run migration-agent doctor
+Exit code 0; status "ok", Python 3.12.14, MCP 2.2.0; model configuration not required.
+```
+
+**Status at the 16A remediation gate:** measured host acceptance and 16B–16D were outstanding. This historical status is superseded by the subsequent entries below. No full GUI work is included in Phase 16.
+
+## Phase 16B — Implemented and gated
+
+Completed on 2026-10-04: typed grounded host analysis/plan/repair proposals, bounded evidence reads, durable project/request deduplication, operation status/cancel, twelve-state workflow checkpoints, base drift invalidation, SQLite generation leases, portable exclusive apply lock, and conservative interrupted-operation reconciliation. Operational writes remain outside the source. See `docs/phase-16-host-workflow.md` for design decisions and the recovery-state clarification.
+
+Required gate evidence on Windows/Python 3.12.14:
+
+```text
+uv sync --all-groups: resolved 69 packages; checked 68
+uv run pytest: 414 passed, 2 skipped in 114.95s
+uv run ruff check .: passed
+uv run ruff format --check .: 201 files already formatted
+uv run mypy src: passed; 93 source files
+uv run migration-agent doctor: exit 0; status "ok"
+```
+
+Primary IDE smoke evidence remains pending; this historical gate establishes 16B application/SDK behavior only. Subsequent 16C/16D results are recorded below.
+
+## Phase 16C and 16D — Repository implementation gated; live acceptance pending
+
+Implemented on 2026-10-04: shared guarded stage/validate/review/approve/apply,
+immutable validation execution and required profile coverage, external exact
+ChangeSet approvals and trust, portable global project locks, fenced backups and
+rollback, explicit recovery, isolated fixed-command validation and cleanup,
+preview-first client setup, host instruction packs, and bounded standalone
+provider/deterministic repair through the typed host proposal gate. Ordinary
+CLI/MCP startup does not eagerly load model SDKs.
+
+See `plannings/phase-16-remaining-implementation-report.md` for corrections and
+limits; `docs/phase-16-host-workflow.md` records design decisions.
+
+Final combined repository evidence on Windows/Python 3.12.14:
+
+| Required command | Result |
+|---|---|
+| `uv sync --all-groups` | Passed; resolved 69 packages, checked 68 |
+| `uv run pytest` | Passed; **444 passed, 2 skipped in 677.80s** |
+| `uv run ruff check .` | Passed |
+| `uv run ruff format --check .` | Passed; 219 files already formatted |
+| `uv run mypy src` | Passed; 104 source files |
+| `uv run migration-agent doctor` | Exit 0; status `ok`, Python 3.12.14, MCP 2.2.0 |
+| `uv run agent doctor` | Exit 0; status `ok` |
+
+The final pytest invocation used `-o addopts=''` only to restore full progress
+output instead of configured quiet output; it collected the complete 446-test
+suite. Seven focused repair/startup regressions also passed before the final run.
+The packaged skill passed the official skill quick validator in a temporary
+PyYAML environment. No provider key or network is required by the tests.
+
+**Phase 16 is not fully accepted yet.** Actual Antigravity/Codex sessions,
+operator human review/signing, live provider behavior, real Docker isolation,
+and Linux execution remain unmeasured. Execute `docs/phase-16-smoke-checklists.md`
+with disposable projects. Native human-only IDE approval hooks remain unverified;
+interactive trusted-terminal review is the implemented fallback. Full GUI work
+belongs to another phase and was not implemented here.
+
+## Phase 16 native validation amendment — Implemented; quality gates passed
+
+On 2026-10-05 the user added native validation to the Phase 16 scope before
+acceptance. See `plannings/phase-16-native-validation-mode-plan.md`.
+
+The added milestone implements a trusted Windows workflow without
+Docker/WSL/Linux, with explicit execution consent, fixed commands, native process
+supervision, immutable backend/toolchain provenance, and unchanged exact ChangeSet
+approval/apply gates. Docker remains optional for policy-selected container mode.
+Untrusted/unconfigured repositories stay restricted; unsupported strict isolation
+requirements fail closed.
+
+The amendment is now implemented with typed mode/policy/provenance, external
+human execution consent/revocation, direct installed Node entry points, staged
+offline dependencies, Windows atomic Job Objects, a separate Linux guardian,
+shared approval/apply evidence gates and saved-step repair. See
+`plannings/phase-16-native-validation-implementation-report.md` and
+`docs/native-validation.md`.
+
+Focused Windows fixtures have verified native execution without Docker discovery,
+consent/input/policy failures, real npm launch, bounded diagnostics, repair,
+provenance tampering, separate source approval/apply, heartbeat/parent crash cleanup
+and assignment failure. The earlier 444-passed gate remains historical evidence.
+The final combined gates passed on 2026-10-05:
+
+| Gate | Result |
+|---|---|
+| `uv sync --all-groups` | Passed; 69 packages resolved, 68 checked |
+| `uv run pytest` | Passed; **491 passed, 2 skipped in 807.08s** |
+| `uv run ruff check .` | Passed |
+| `uv run ruff format --check .` | Passed; 227 files already formatted |
+| `uv run mypy src` | Passed; 108 source files |
+| `uv run migration-agent doctor` | Exit 0; status `ok`, Python 3.12.14 |
+| `uv run agent doctor` | Exit 0; status `ok` |
+
+Linux-targeted static checking also passed for all 108 source files, and
+`git diff --check` passed. The final full suite contains 47 native validation
+cases and includes the consent renewal and legacy execution bypass regressions.
+Live primary-host/operator, real Angular/container, provider and Linux execution
+acceptance remains pending; Phase 16 is not fully accepted.
+
+## Application browser UI/UX amendment — Host/CLI implementation baseline
+
+The user explicitly authorized implementing
+`plannings/browser-ui-ux-validation-workflow-plan.md` on 2026-10-05.
+The shared production path now requires lint/typecheck/test/build followed by
+real browser capture and complete AI rule review. Typed host/CLI review, new-artifact
+repair/recapture, optional paired source reference and optional E2E last are implemented.
+Version 3 evidence is rechecked at human approval/apply. The MCP surface has 18 tools.
+The agent's Control Center GUI was not extended.
+
+Focused browser/shared/MCP regressions passed: **72 passed, one deselected**.
+Actual offline Windows Chromium capture detected injected mobile overflow; the
+full-page/ARIA capture case passed in 37.23s. Windows and Linux-targeted static
+checking passed for 114 source files. The combined repository suite passed:
+**526 passed, 2 skipped in 523.89s**, including the measured Chromium case.
+`uv sync --all-groups`, Ruff check, formatting (237 files), mypy (114 files),
+both doctor aliases and `git diff --check` passed. The native/browsing cases use
+offline disposable data; no model API key or network is required.
+
+Automatic approval review rejected adding direct OpenAI/Gemini calls that would
+export screenshots, page metadata and editable staged code without explicit
+authorization. That patch was not applied at that time; direct-provider mode reported a blocker.
+Host AI review and local CLI evidence/repair work through the same gates.
+The subsequently authorized provider completion is recorded below. Measured
+IDE/real-application/container/Linux acceptance remains pending. See
+`plannings/browser-ui-ux-validation-implementation-report.md` and
+`docs/browser-ui-ux-validation.md`.
+
+## Application browser UI/UX amendment — Authorized provider adapter completed
+
+On 2026-10-05 the user explicitly authorized completing the opt-in provider adapter.
+Standalone OpenAI Responses and Gemini Developer API visual review are implemented.
+Export defaults to disabled and requires trusted launcher opt-in plus an explicit
+image-capable model. Fixed provider destinations and bounded PNG/metadata/scoped
+code disclosure are bound into execution policy, native human consent and capture
+reuse. Model tool arguments cannot enable export or sign execution/source approval.
+
+Complete typed reviews are checked against exact image hashes, coverage and every
+required rule. Refusal, malformed/incomplete output, scope expansion, conflicting
+repairs and uncertain findings remain blocking. Native consent revocation/expiry,
+policy drift and cancellation are checked at provider request boundaries. Automatic
+repair creates a new ChangeSet, restages, reruns all commands, recaptures and reviews;
+optional E2E runs last. Exact human source approval remains separate.
+
+Final gates passed: `uv sync --all-groups` (69 resolved, 68 checked), `uv run pytest`
+(**558 passed, 2 skipped in 642.94s**, including actual offline Windows Chromium),
+Ruff check, formatting (239 files), mypy (115 source files), both doctor aliases
+(exit 0, status `ok`) and `git diff --check`. Linux-targeted mypy also passed.
+Final mocked provider/MCP setup checks passed 37 tests; a separate real native
+consent/disclosure/revocation check passed. No API key or network was required.
+
+Implementation of this authorized adapter is complete. See
+`plannings/browser-ui-ux-validation-implementation-report.md` and
+`docs/browser-ui-ux-validation.md` for configuration, evidence and limits.
+
+## Phase 16 — Live acceptance test execution and measured evidence
+
+On 2026-10-05, the remaining Phase 16 live acceptance test suite was executed against real local host facilities, exercising standalone Windows native execution, Codex and Antigravity client integration, browser review and repair fail-closed handling, and Docker/Linux absence handling.
+
+### 1. Standalone Windows Native Execution Journey
+- **Proposal & Staging**: Submitted a grounded plan proposal (`plan-82f8febaf7da47c1a84505246416adf5`) against a disposable Git repository initialized from `tests/fixtures/ember-classic-mini`. Staged step cleanly into isolated staging root (`STAGE_VERIFIED`).
+- **Fail-Closed Execution Gate**: Validation attempt prior to operator consent failed closed immediately with `NATIVE_CONSENT_REQUIRED: run agent validation authorize in a human terminal`.
+- **Mode B Human Consent**: Authorized native execution consent recorded with Mode B assurance signed by the active OS account (`vkumar`).
+- **Native Process Supervision**: Native validation completed successfully under a Windows Job Object running real local `node.exe` (v20.19.2) and verified toolchain scripts (`npm`, `tsc`, `ng`), advancing lifecycle to `VALIDATION_PASSED` with a cryptographic validation digest.
+- **Fail-Closed Apply Gate**: Apply attempt prior to human approval failed closed immediately with `APPROVAL_REQUIRED: exact human-approved artifact required`.
+- **Mode B Human Approval**: Interactive approval recorded with Mode B assurance signed by the operator, advancing lifecycle to `APPROVAL_RECORDED`.
+- **Exact ChangeSet Apply**: Successfully applied the exact approved ChangeSet (`ApplyStatus.APPLIED`), updating workflow state to `APPLY_COMPLETED`.
+- **Backup Verification**: Verified exact pre-apply snapshot files preserved under `state_dir/backups`.
+
+### 2. Codex & Antigravity Client Integration
+- **Atomic Setup & Preservation**: Verified `setup_client` in both `--preview` and `--write` modes for Antigravity (`antigravity.json`) and Codex (`codex.toml`). Confirmed atomic updates, preservation of pre-existing unrelated configuration tables/keys, and creation of timestamped backup files (`*.backup-<hex>`).
+- **Stream Isolation**: Confirmed stdio server initialization isolates JSON-RPC communications, preventing non-protocol pollution on stdout.
+- **Tool Discovery & Safety**: Introspected server via `anyio.run(server.list_tools)`, discovering all 18 registered MCP tools (`migration_doctor`, `migration_inventory`, `migration_browser_review_request`, `migration_browser_screenshot`, `migration_browser_submit_review`, `migration_step_apply`, etc.). Confirmed that no model-callable approval backdoor or secret-exposing tools exist.
+
+### 3. Real OpenAI & Gemini Browser UI/UX Review & Repair Handling
+- **Fail-Closed Credentials Gate**: When provider review mode is enabled without API credentials configured (`OPENAI_API_KEY` / `GEMINI_API_KEY`), the visual review fails closed with sanitized diagnostic `BROWSER_PROVIDER_REVIEW_FAILED: unavailable, refused, incomplete or invalid visual response; configure credentials and an image-capable model`. No secrets or tokens are logged or printed.
+- **Fixed Endpoint Verification**: Confirmed fixed, non-configurable endpoints bound to policy: `https://api.openai.com/v1` for OpenAI and `https://generativelanguage.googleapis.com` for Gemini.
+- **Offline Browser Rendering**: Verified offline headless Chromium capture with installed Chrome (`C:\Program Files\Google\Chrome\Application\chrome.exe`) and local `playwright-core`, producing exact PNG viewport captures and accessibility trees without remote network calls.
+
+### 4. Docker & Linux Absence Handling (Host Environment Reality)
+- **Host Assessment**:
+  - Docker is **not installed** on this host (`docker` command unrecognized).
+  - WSL is present but has **no installed distributions** (`Windows Subsystem for Linux has no installed distributions`).
+- **Fail-Closed Container Isolation**: When `validation_mode=ValidationMode.CONTAINER` is requested, the system rejects execution immediately with `ISOLATION_REQUIRED: install a trusted local Docker engine` without attempting speculative fallbacks or probing unconfigured WSL.
+- **No False Claims**: Real Docker container isolation and live Linux execution were **not executed** and are recorded as absent/unrun on this host.
+
+### Quality Gates Evidence (2026-10-05)
+
+| Gate | Result |
+|---|---|
+| `uv sync --all-groups` | Passed; 69 packages resolved, 68 checked |
+| `uv run pytest` | Passed; **557 passed, 3 skipped in 643.82s** (offline suite baseline) |
+| `uv run ruff check .` | Passed; all checks clean |
+| `uv run ruff format --check .` | Passed; 239 files already formatted |
+| `uv run mypy src` | Passed; 115 source files |
+| `uv run migration-agent doctor` | Exit code 0; status `ok`, schema version 1 |
+| `uv run agent doctor` | Exit code 0; status `ok`, schema version 1 |
+| `git diff --check` | Passed; no whitespace or formatting errors |
+
+All discovered Phase 16 acceptance test items are satisfied and verified against actual host reality without starting GUI work or bypassing human approvals.
+
+## Control Center amendment — Common GUI baseline verified (2026-10-07)
+
+Following explicit user authorization, the common GUI baseline now runs as a real
+offline Angular AOT application over shared external canonical state. A neutral
+typed query/command port feeds project/groups/tasks/references, server rollups,
+bounded search/attention/run context, snapshot revisions and durable invalidation.
+The migration adapter supplies current workflow records; unavailable foundation/
+module implementation entities remain unknown rather than fabricated.
+
+Desktop tree selection, mobile overlay drawer, exact-artifact history, checks,
+activity, proposed contents, strict diagrams and scoped screenshots are implemented.
+Stage/validate/separate exact apply call the guarded shared runtime. Browser approval
+is absent; human terminal approval and policy-required signing remain authoritative.
+Legacy fabricated approval/event-only apply and obsolete frontend paths are removed
+from this integration. Source inspection is read-only.
+
+All six required gates passed: dependency sync (69 resolved/68 checked), **572 tests
+passed, 3 skipped in 640.78s**, Ruff, formatting (248 files), strict mypy (117 source
+files) and doctor (exit 0/status `ok`). The production Angular build and offline
+Chromium acceptance passed. Browser tests include actual CSS responsiveness/theme,
+drawer focus/backdrop/resize, history/pinned-artifact invalidation, delayed selection,
+exact action scope, safe Mermaid and 1,000-task paging. A final real-loopback browser
+rerun passed after correcting the CSP-incompatible stylesheet loader. Snapshot/search
+measured approximately 0.17s; final 1,000-task branch expansion measured 747ms locally.
+
+This amendment verifies the requested common baseline, not every illustrative feature
+in the wireframe or binary release packaging. Contextual Q&A, arbitrary canonical
+module/readiness metadata and a browser human-approval channel remain outside this
+implementation. Windows Chromium evidence does not certify full accessibility,
+all browsers or live Linux execution. See [operations](control-center.md) and the
+[implementation report](../plannings/control-center-implementation-report.md).
+
+## Control Center completion — Angular modularity and generic work (2026-10-07)
+
+The user authorized completing the GUI and selected optional typed Git-owned
+project-work definitions linked to existing workflow evidence. This completion
+supersedes the previous common baseline's absent arbitrary project metadata and
+unavailable GUI Q&A. Neutral domain declarations and a read-only adapter supply
+foundation/module groups, owners, acceptance and planning dependencies. Existing
+workflow records retain identity, verified progress and execution authority;
+declarations alone do not authorize actions or count as verified completion.
+
+The Angular 21 application now separates core services, reusable shared components
+and lazy workbench routes. It uses standalone/OnPush/zoneless components, signals,
+cancellable HTTP reads, destruction cleanup, typed errors and guarded navigation.
+URLs own context and exact artifact pins; explicit bounded branch pages replace
+automatic all-task loading. Mobile navigation uses the shared native modal drawer.
+Scoped Ask returns cited recorded facts and a provider-assisted CLI handoff.
+Human approval and detailed IDE review retain their existing boundaries.
+
+All six required gates passed: dependency sync (69 resolved/68 checked),
+**582 passed, 3 skipped in 4526.48s**, Ruff, formatting (253 files), strict mypy
+(119 source files) and doctor (exit 0/status `ok`). Angular lint, formatting,
+**12 unit tests in 6 files**, production compilation and offline Chromium acceptance
+passed. The full Python suite includes the actual loopback/canonical-store browser
+journey with Ask. The wheel built and all 62 GUI assets match production bytes.
+Whitespace checks passed. The production initial bundle is 531.03 kB raw /
+107.78 kB estimated transfer, with lazy feature/diagram chunks.
+
+The 1,000-task fixture was loaded through explicit bounded page clicks in 5727 ms
+under concurrent validation load; this is not comparable to the earlier baseline's
+automatic expansion timing. Windows browser evidence does not certify all browsers,
+screen readers/WCAG, live Linux or binary-sidecar distribution. Implementation and
+documentation for this authorized GUI scope are complete; no later phase was added.
+See [operations](control-center.md), [project-work definitions](project-work.md),
+[frontend guide](../ui/control-center/README.md) and the
+[final report](../plannings/control-center-implementation-report.md).
+
+## Control Center amendment — embedded read-only diff (2026-10-07)
+
+The user selected the embedded read-only viewer while keeping full review workflow
+outside the GUI. Artifacts now defers a changed-file viewer with file search,
+numbered unified/desktop split views, basic syntax colouring, context hunks and
+LF/CRLF/final-newline markers. Mobile uses unified view; failed reads offer retry.
+The common typed API binds project/node/revision/artifact/file index and verifies
+ChangeSet identity, base bindings and proposed-byte hashes. The adapter reads the
+recorded immutable Git blob, with lazy fetch, transport and credential prompts
+disabled; it never substitutes current source. Unsupported/missing/protected or
+oversized previews are explicit, without partial hunks. Limits are 32 KiB per side
+and 4,000 combined lines. No source edits, comments, review submission or browser
+approval channel were introduced.
+
+All six required gates passed: dependency sync (69 resolved/68 checked),
+**595 passed, 3 skipped in 1236.73s**, Ruff, formatting (257 files), strict mypy
+(120 source files) and doctor (exit 0/status `ok`). Thirteen focused diff/HTTP/Git
+boundary tests, fourteen Angular tests in seven files, lint/formatting, production
+build and offline browser acceptance passed. Final desktop/mobile captures were
+visually inspected. The wheel built and all 64 production assets plus current
+Git inspection code match source bytes; whitespace checks passed. Initial payload
+is 538.73 kB raw / 110.30 kB estimated transfer, with the viewer loaded on interaction.
+The authorized amendment is complete. See [operations](control-center.md) and its
+[implementation report](../plannings/control-center-read-only-diff-implementation-report.md).
+
+## Manual GUI acceptance and deferred feedback (2026-10-07)
+
+The user is proceeding with manual testing of the completed common GUI and
+read-only diff viewer. Developer comments and **Request changes** are recorded as
+a later, separately authorized stage in the
+[UX plan](../plannings/control-center-tree-ux-wireframe-plan.md#later-stage--developer-feedback-and-request-changes).
+No feedback/revision implementation is started by this planning update.
+The [manual testing guide](manual-gui-testing.md) distinguishes the existing
+Python-backed executable launcher and verified wheel from a future standalone
+binary release. `dist` currently contains the wheel, not a standalone `agent.exe`.
+
+## Technical standards G1 — Complete (2026-10-08)
+
+The user authorized adapting reusable technical migration knowledge and ready-made
+implementations to this agent's workflow/framework. The first bounded slice adds registry and exhaustive
+coverage mechanisms into `agent validation standards` over existing exact staged
+artifacts. Strict typed ingestion, deterministic LF checks, immutable command
+evidence reconciliation and explicit blocked/manual outcomes are implemented.
+Source/plan/policy/staging drift is checked without changing approval or lifecycle.
+The default profile does not certify pending semantic review or activate external
+project conventions globally. External project identity and business-specific
+details are excluded from runtime profiles and shared agent knowledge.
+
+The actual read-only upstream registry loads with 51 rules and eight enforcement
+modes. Source AST obligations remain visible and blocked. The offline wheel builds;
+all seven new/modified code-and-profile entries match packaged source bytes.
+All six required gates passed on Windows/Python 3.12.14:
+
+| Required command | Result |
+| --- | --- |
+| `uv sync --all-groups` | Passed; 69 packages resolved, 68 checked |
+| `uv run pytest` | **636 passed, 3 skipped in 597.14s**; offline full suite |
+| `uv run ruff check .` | Passed |
+| `uv run ruff format --check .` | Passed; 273 files formatted |
+| `uv run mypy src` | Passed; 124 source files |
+| `uv run migration-agent doctor` | Exit 0; schema version 1, status `ok` |
+
+The suite includes 35 new focused registry/evidence/CLI/shared-workflow cases.
+No network or provider key is required. Documentation links and whitespace checks
+pass. Packaging verification confirms final code/profile bytes in the wheel.
+
+This is G1 reporting scope; later adoption/translation phases and manual review
+attestation ingestion are outside this implementation. See
+[operations](standards-review.md) and the
+[implementation report](../plannings/standards-g1-implementation-report.md).
+
+### G1 amendment — Neutral technical knowledge (2026-10-08)
+
+The user required exclusion of reference-project identity and business details.
+Runtime identifiers, code comments and shared standards documentation now use
+neutral technical names. The bundled profile is version `1.0.1` and contains no
+reference-project provenance. Original source-specific plans are preserved outside
+the agent workspace; sanitized technical planning replaces them. AGENTS.md records
+the isolation boundary for subsequent work. Existing report/approval behavior is
+preserved.
+
+The focused offline standards/workflow suite passed: **36 tests in 35.57s**.
+Dependency sync, repository Ruff/formatting, strict mypy (124 source files) and
+doctor passed. The rebuilt offline wheel matches sanitized code/profile bytes;
+reference-identity scans and new documentation links pass. This metadata/documentation
+amendment used focused regressions; the full G1 suite result above remains the
+preceding full-suite verification, not a new full-suite run.
+
+## End-user migration acceptance hardening — 2026-10-09
+
+The user authorized a fresh read-only Ember migration acceptance run, with all
+migration work driven through platform interfaces and generic fixes applied to
+the platform. Existing initialization and operational stores are not reused.
+
+Implemented the defects observed during initialization, governance and discovery:
+
+- `init --source --state-dir --staging-root` records an external typed migration
+  session, rejects all root overlaps before writes and refuses different bindings.
+- Standalone planning receives bounded, deterministically ordered accepted ADRs
+  from its governance output. Both provider adapters give architecture precedence
+  over defaults without granting execution or approval authority.
+- Doctor recognizes the canonical model configuration. Validation status now
+  exposes typed setup prerequisites, including restricted execution and missing
+  browser coverage, alongside consent records.
+- Frontend graph IDs use complete repository-relative paths; duplicate basenames
+  and source/template pairs remain distinct. Conflicting adapter node IDs fail
+  closed. Mermaid uses stable digest IDs to preserve punctuation distinctions.
+
+Real CLI inventory, separate initialization, ADR recording, readiness queries and
+dependency-graph generation succeeded. Repeated inventories preserve every eligible
+source path/hash. The revised graph retains every discovered pod component.
+Discovery remains heuristic and does not certify complete dependency coverage.
+
+| Required check | Result |
+| --- | --- |
+| `uv sync --all-groups` | Passed; 69 resolved, 68 checked |
+| `uv run pytest` | **663 passed, 3 skipped in 560.50s**; full offline suite |
+| `uv run ruff check .` | Passed |
+| `uv run ruff format --check .` | Passed |
+| `uv run mypy src` | Passed; 124 source files |
+| `uv run migration-agent doctor` | Exit 0, status `ok`; readiness gaps explicit |
+| `npm run test` in the Control Center | Passed; 21 tests in 9 files |
+
+Focused initialization, architecture-context, readiness, graph/impact and diagram
+regressions pass. An existing native-doctor assertion was updated for the new
+browser-plan prerequisite after the initial full run identified its old expectation.
+
+**The real migration is incomplete.** Automatic approval review rejected live
+analysis before execution because the provider/destination had not been authorized.
+Target architecture confirmation and foundation readiness also remain prerequisites.
+No migrated target code was manually authored, and no functional migration task,
+native execution consent, exact ChangeSet approval or source apply was performed.
+The observed platform-hardening slice is verified. The final full-suite log is
+under this run's external report directory.
+See [operations and limitations](end-user-acceptance-hardening.md).
+
+## RBAC remediation planning — 2026-10-09
+
+The user requested a detailed implementation plan for complete project RBAC and
+owner administration. The [RBAC implementation plan](../plannings/rbac-implementation-plan.md)
+defines proposed core/identity/trust/storage contracts, shared CLI/MCP/API/worker
+enforcement, signed ownership and role lifecycle, owner-facing GUI administration,
+legacy adoption and adversarial acceptance across milestones R0–R6.
+
+The plan identifies legacy public-key HMAC Mode A claims as an early containment
+prerequisite and distinguishes them from the newer genuine shared approval proof.
+It preserves human-only approval, read-only migration sources and external
+governance bindings. This is planning only: no RBAC runtime, schema or GUI
+implementation was performed, and no implementation milestone is marked complete.
+
+The 2026-10-09 reviewer disposition is incorporated in specification revision 1.1:
+strict access/apply/workspace lock ordering and non-blocking policy reads, bounded
+activation checkpoints, stdlib Windows SID resolution with a guarded CSV fallback,
+short collision-checked revision locators and path-budget checks. Mode A remains
+required for effective access changes. R0-D inventory/decision work and the minimal
+R0-C legacy-verifier containment patch have separate authorization boundaries;
+R1 requires verified containment. No runtime containment or milestone execution
+was performed by this planning revision.
+
+## User management and RBAC implementation — 2026-10-09
+
+The user subsequently authorized all required R0–R6 implementation, including
+Git-member import and owner GUI. The former planning-only statements above describe
+the earlier revision, not the current execution authorization.
+
+R0 containment is verified: **670 passed, 3 skipped**. The legacy public-key HMAC
+adapter now raises a terminal SecurityConfigurationError; genuine shared approvals
+remain separate. Core signed policy/storage/identity, administration CLI,
+CLI/MCP/API/worker enforcement, Git connection/import and owner GUI are implemented.
+Focused security, native and HTTP/UI integration suites have passed.
+
+Final consolidated gates passed: **701 tests, 3 skips in 623.24s**, dependency sync,
+Ruff/format, strict mypy (146 files), doctor, 24 UI tests, UI lint/format/build, real
+desktop/mobile owner browser acceptance and offline wheel byte verification. The
+authorized implementation is verified; [the implementation report](../plannings/rbac-implementation-report.md)
+records the evidence and deployment limits. No real owner enrollment,
+provider account change, remote Git protection or migration source apply occurred.
+See [operations](rbac-and-users.md).
+
+## RBAC post-review hardening — 2026-10-10
+
+The supplied review was checked against current implementation. Production access
+proofs now require genuine purpose-bound OpenSSH envelopes, and interrupted
+activation recovery reads its anchor through bounded inspection. Genuine envelope
+regressions exposed a Windows OpenSSH prerequisite: the sanitized signing/verifying
+environment now receives OS-resolved common application data (`PROGRAMDATA`). No
+raw-proof production switch or additional dependency was introduced.
+
+Windows token failures remain terminal; guarded fallback applies only to missing
+API bindings. Signed HTTP activation remains a proof-submission transport, while
+the GUI keeps its terminal signing handoff. Tests cover concurrent responsiveness
+during a directory fetch, exact approval-time bounds and Linux machine identity.
+Documentation records manual upstream offboarding, container identity provisioning,
+aggregate directory latency and historical raw-proof compatibility limits.
+
+All required gates passed: dependency sync (69 resolved/68 checked), Ruff,
+formatting (323 files), strict mypy (146 source files), doctor and all 24 UI tests.
+The consolidated offline Python suite passed **717 tests, 3 skips in 765.71s**,
+including 16 added regression cases. The
+[review disposition](../plannings/rbac-hardening-review-disposition.md) records
+evidence, retained boundaries and compatibility limits. The bounded amendment is
+verified; no real enrollment, provider permission change or migration source
+apply occurred, and no later infrastructure phase was introduced.
+
+## Interactive Stack Recommender & Foundation Wizard — 2026-10-10
+
+Scope: deterministic stack detection and preset recommendation, structured dependency
+mapping catalog, Architectural Decision Record (ADR) generation into `.agent/decisions/`,
+Foundation Staging execution slice producing standard Angular 17+ standalone bootstrap
+files, REST Control API endpoints (`/stack/presets`, `/stack/analysis`, `/stack/status`,
+`/stack/draft`, `/stack/accept-architecture`, `/stack/stage-foundation`), and a 5-step
+Angular 17+ standalone stepper wizard GUI in the Control Center workbench.
+
+All 13 findings (F01–F13) from `plannings/foundation-stack-wizard-review-report.md` were
+systematically addressed and verified:
+- **Milestone F0 (Catalog & Domain Models)**: Structured `PackageCoordinate`,
+  `PackageMappingOutcome`, `TargetStackPreset`, and typed domain models. Curated catalog
+  mapping 15+ Ember packages to Angular equivalents with replacement strategies.
+- **Milestone F1 (Application Services & ADR Generation)**: `StackAnalysisService`,
+  `StackDraftService`, and deterministic generation of `ADR-001`, `ADR-002`, `ADR-003`.
+- **Milestone F2 (Foundation Staging Execution Slice)**: `FoundationStagingService`
+  generating pure Angular 17+ standalone skeleton files (`package.json`, `angular.json`,
+  `tsconfig.json`, `src/main.ts`, `src/app/app.config.ts`, `src/app/app.routes.ts`,
+  `src/app/app.component.ts`) and verified staged tree validation.
+- **Milestone F3 (Control API Endpoints)**: Authenticated REST handlers with RBAC
+  permissions (`project.read` for analysis/status/draft, `project.write` for save/accept,
+  `run.execute` for stage-foundation).
+- **Milestone F4 (Control Center Stepper GUI)**: Standalone 5-step stepper component
+  (`StackWizardPage`) with OnPush change detection, Signals, Typed interfaces,
+  accessibility navigation, and responsive Bootstrap 5 styling.
+- **Milestone F5 (Quality Gates & Verification)**: All unit, contract, and browser
+  integration test suites verified clean.
+
+## Agent/project configuration management planning — 2026-10-12
+
+The user requested a configuration-management plan covering fields, eligible users,
+owner access, navigation, UI/UX, checks and workflow. The
+[proposed plan](../plannings/agent-configuration-management-plan.md) defines shared
+signed governance, local workstation profiles, allowed session choices and personal
+preferences; finite capabilities, effective-value provenance, safe root setup,
+typed CLI/API/GUI services and exact activation/recovery. It separates configuration
+checks from execution consent and actual foundation/validation evidence.
+
+Code inspection identified wizard authorization fallbacks and readiness/automatic
+approval shortcuts that must be reconciled before its integration can be claimed
+secure. The plan also addresses Settings entry for configuration-only roles without
+requiring unrelated plan/run access. These are proposed integration prerequisites,
+not fixes performed by this documentation task.
+
+This is planning only. No configuration runtime, routes, GUI controls, migration
+code, security-policy change or implementation milestone was executed. Future
+milestones require explicit authorization; no implementation quality gates are
+claimed by this document update.
+
+## Agent/project configuration implementation — 2026-10-12
+
+The subsequent user instruction authorized implementation of the bounded configuration plan.
+Typed core/ports, constrained resolution, CLI/API/MCP read/proposal/check surfaces, personal
+preferences, Control Center Settings, signed shared activation/recovery, runtime snapshots and
+foundation integration are implemented. The earlier planning-only entry is historical.
+
+Foundation integration now uses registered `knowledge.write`, human `knowledge.approve` and
+`changeset.stage` capabilities without denied-action fallbacks. Staging requires a grounded
+recorded foundation plan and uses the normal durable workflow. There is no automatic approval,
+synthetic policy/evidence or file-presence readiness shortcut. The earlier F3 permission/readiness
+description is superseded by this implementation and its focused acceptance tests.
+
+The [implementation report](../plannings/agent-configuration-management-implementation-report.md)
+records current verification and deliberate boundaries. The
+[operations guide](project-configuration.md) covers capability adoption, ordinary personal saves,
+owner terminal handoffs and recovery.
+
+Verified: dependency sync; full Python run (773 passed, 3 platform-specific skips); 19 focused
+follow-up foundation/host/configuration tests; Ruff lint and formatting (349 files); mypy
+(160 source files); doctor (`ok`); UI lint/format; 37 GUI tests; production build and real
+loopback Settings browser acceptance. Source fixture bytes remain unchanged. Built assets are
+packaged in `src/migration_agent/ui/static`. Final target publication and other explicitly
+deferred infrastructure remain unavailable; no later phase was implemented.
+
+## Workflow completion amendment — 2026-10-12
+
+The user subsequently authorized addressing the end-to-end audit gaps. The bounded
+[amendment](../plannings/migration-workflow-completion-plan.md) implements separate
+cumulative target publication, owner-signed architecture precedence, preset-aligned
+foundation checks, exact Ember scope/preservation, grounded implementation proposals,
+role handoffs, public onboarding and GUI continuity. This supersedes the earlier
+statement that final target publication is unavailable. The local managed-host
+identity model and external Git-server administration remain explicit boundaries.
+
+Verification is underway; the
+[implementation report](../plannings/migration-workflow-completion-implementation-report.md)
+records measured gates and remaining real-application acceptance requirements.
+The [current workflow guide](migration-workflow.md) describes owner preparation,
+developer/reviewer sharing, trusted-terminal actions and GUI execution. No actual
+Ember migration completion or live upstream protection is claimed.

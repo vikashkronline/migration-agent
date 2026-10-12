@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "profileId": "ember-angular-baseline",
+  "version": "1.0.1",
+  "authority": "Opt-in technical standards for migration-agent. This registry does not grant execution, repair, policy or apply authority.",
+  "rules": [
+    {
+      "id": "RULE-FORMAT-001",
+      "category": "FORMAT",
+      "severity": "ERROR",
+      "appliesTo": ["TS", "HTML", "SCSS"],
+      "enforcement": "LINT",
+      "safeAutofix": false,
+      "text": "Use LF line endings in proposed Angular source.",
+      "evaluatorId": "line-endings"
+    },
+    {
+      "id": "RULE-QUALITY-001",
+      "category": "QUALITY",
+      "severity": "ERROR",
+      "appliesTo": ["FILES"],
+      "enforcement": "COMMAND",
+      "safeAutofix": false,
+      "text": "Require existing exact-artifact lint, typecheck, test and build execution evidence. Never execute registry prose as commands.",
+      "evaluatorId": "validation-profiles",
+      "requiredProfiles": ["LINT", "TYPECHECK", "TEST", "BUILD"]
+    },
+    {
+      "id": "RULE-MIGRATION-CONTRACT-001",
+      "category": "MIGRATION",
+      "severity": "ERROR",
+      "appliesTo": ["FILES"],
+      "enforcement": "MANUAL",
+      "safeAutofix": false,
+      "text": "Review source-to-target behavioral parity, parent/child bindings, generated DTO preservation and affected consumers, including deletions. G1 records this obligation and cannot certify its completion."
+    }
+  ]
+}

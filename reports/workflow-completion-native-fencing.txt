@@ -1,0 +1,34 @@
+..............F.........................FF.............................. [ 85%]
+............                                                             [100%]
+================================== FAILURES ===================================
+_ test_native_evidence_inspection_requires_read_capability_without_running_code _
+tests\unit\test_native_validation.py:233: in test_native_evidence_inspection_requires_read_capability_without_running_code
+    runtime.runner.verify_execution(execution, record)
+src\migration_agent\adapters\validation_backend.py:809: in verify_execution
+    self._verify_execution(execution, record)
+src\migration_agent\adapters\validation_backend.py:828: in _verify_execution
+    consent = self._consent(
+src\migration_agent\adapters\validation_backend.py:601: in _consent
+    self.proposals.authorization.require(capability)
+tests\unit\test_native_validation.py:226: in inspection
+    return original(capability, expected_digest)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\unit\access_fixture.py:14: in require
+    raise AccessDenied("CAPABILITY_DENIED")
+E   migration_agent.domain.access.AccessDenied: CAPABILITY_DENIED
+____ test_execution_consent_revocation_invalidates_recorded_apply_approval ____
+tests\unit\test_native_validation.py:622: in test_execution_consent_revocation_invalidates_recorded_apply_approval
+    with pytest.raises(ValueError, match="NATIVE_CONSENT_REQUIRED"):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE ValueError
+_ test_renewed_execution_consent_requires_revalidation_and_new_apply_approval _
+tests\unit\test_native_validation.py:636: in test_renewed_execution_consent_requires_revalidation_and_new_apply_approval
+    with pytest.raises(ValueError, match="NATIVE_CONSENT_REQUIRED"):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AssertionError: Regex pattern did not match.
+E     Expected regex: 'NATIVE_CONSENT_REQUIRED'
+E     Actual message: 'CAPABILITY_DENIED'
+=========================== short test summary info ===========================
+FAILED tests/unit/test_native_validation.py::test_native_evidence_inspection_requires_read_capability_without_running_code
+FAILED tests/unit/test_native_validation.py::test_execution_consent_revocation_invalidates_recorded_apply_approval
+FAILED tests/unit/test_native_validation.py::test_renewed_execution_consent_requires_revalidation_and_new_apply_approval

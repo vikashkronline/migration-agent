@@ -1,0 +1,557 @@
+.........................................................F.............. [ 10%]
+..............................................................s......... [ 21%]
+....................FFFFF........FFF..F.F.F.FFF
+================================== FAILURES ===================================
+______ test_host_analysis_proposal_over_transport_is_idempotent[asyncio] ______
+  + Exception Group Traceback (most recent call last):
+  |   File "C:\Projects\New folder\migration-agent\tests\contract\test_mcp_server.py", line 682, in test_host_analysis_proposal_over_transport_is_idempotent
+  |     async with create_connected_session(binding, tmp_path / "state") as (session, tg):
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "C:\Users\vkumar\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\contextlib.py", line 231, in __aexit__
+  |     await self.gen.athrow(value)
+  |   File "C:\Projects\New folder\migration-agent\tests\contract\test_mcp_server.py", line 49, in create_connected_session
+  |     async with anyio.create_task_group() as tg:
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "C:\Projects\New folder\migration-agent\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 847, in __aexit__
+  |     raise BaseExceptionGroup(
+  | ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)
+  +-+---------------- 1 ----------------
+    | Exception Group Traceback (most recent call last):
+    |   File "C:\Projects\New folder\migration-agent\tests\contract\test_mcp_server.py", line 60, in create_connected_session
+    |     async with ClientSession(server_to_client_recv, client_to_server_send) as session:
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "C:\Projects\New folder\migration-agent\.venv\Lib\site-packages\mcp\client\session.py", line 514, in __aexit__
+    |     result = await self._task_group.__aexit__(exc_type, exc_val, exc_tb)
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "C:\Projects\New folder\migration-agent\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 847, in __aexit__
+    |     raise BaseExceptionGroup(
+    | ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)
+    +-+---------------- 1 ----------------
+      | Traceback (most recent call last):
+      |   File "C:\Projects\New folder\migration-agent\tests\contract\test_mcp_server.py", line 62, in create_connected_session
+      |     yield session, tg
+      |   File "C:\Projects\New folder\migration-agent\tests\contract\test_mcp_server.py", line 691, in test_host_analysis_proposal_over_transport_is_idempotent
+      |     assert not first.is_error and first.structured_content == second.structured_content
+      | AssertionError: assert (not True)
+      |  +  where True = CallToolResult(meta=None, content=[TextContent(type='text', text='Error executing tool migration_submit_analysis: ACCE...ernance project owner.', annotations=None, meta=None)], structured_content=None, is_error=True, result_type='complete').is_error
+      +------------------------------------
+___________________ test_cli_analyze_command_default_gemini ___________________
+
+tmp_path = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-744/test_cli_analyze_command_defau0')
+
+    def test_cli_analyze_command_default_gemini(tmp_path: Path) -> None:
+        fixture_path = Path(__file__).parents[1] / "fixtures" / "ember-classic-mini"
+        output_dir = tmp_path / "out"
+    
+        result = runner.invoke(
+            app,
+            ["analyze", str(fixture_path), "--output", str(output_dir), "--fake-runtime"],
+        )
+    
+>       assert result.exit_code == 0
+E       assert 2 == 0
+E        +  where 2 = <Result SystemExit(2)>.exit_code
+
+tests\unit\test_cli_analyze.py:20: AssertionError
+__________________ test_cli_analyze_command_openai_provider ___________________
+
+tmp_path = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-744/test_cli_analyze_command_opena0')
+
+    def test_cli_analyze_command_openai_provider(tmp_path: Path) -> None:
+        fixture_path = Path(__file__).parents[1] / "fixtures" / "ember-classic-mini"
+        output_dir = tmp_path / "out_openai"
+    
+        result = runner.invoke(
+            app,
+            [
+                "analyze",
+                str(fixture_path),
+                "--output",
+                str(output_dir),
+                "--provider",
+                "openai",
+                "--fake-runtime",
+            ],
+        )
+    
+>       assert result.exit_code == 0
+E       assert 2 == 0
+E        +  where 2 = <Result SystemExit(2)>.exit_code
+
+tests\unit\test_cli_analyze.py:47: AssertionError
+____________________ test_cli_analyze_command_custom_model ____________________
+
+tmp_path = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-744/test_cli_analyze_command_custo0')
+
+    def test_cli_analyze_command_custom_model(tmp_path: Path) -> None:
+        fixture_path = Path(__file__).parents[1] / "fixtures" / "ember-classic-mini"
+        output_dir = tmp_path / "out_custom"
+    
+        result = runner.invoke(
+            app,
+            [
+                "analyze",
+                str(fixture_path),
+                "--output",
+                str(output_dir),
+                "--model",
+                "custom-gemini-preview",
+                "--fake-runtime",
+            ],
+        )
+    
+>       assert result.exit_code == 0
+E       assert 2 == 0
+E        +  where 2 = <Result SystemExit(2)>.exit_code
+
+tests\unit\test_cli_analyze.py:71: AssertionError
+________________ test_cli_analyze_rejects_unsupported_provider ________________
+
+tmp_path = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-744/test_cli_analyze_rejects_unsup0')
+
+    def test_cli_analyze_rejects_unsupported_provider(tmp_path: Path) -> None:
+        fixture_path = Path(__file__).parents[1] / "fixtures" / "ember-classic-mini"
+        output_dir = tmp_path / "out_bad"
+    
+        result = runner.invoke(
+            app,
+            [
+                "analyze",
+                str(fixture_path),
+                "--output",
+                str(output_dir),
+                "--provider",
+                "unsupported_llm",
+            ],
+        )
+    
+        assert result.exit_code == 2
+>       assert "Unsupported runtime provider" in result.stderr
+E       assert 'Unsupported runtime provider' in '{"status": "blocked", "error": "ACCESS_BOOTSTRAP_REQUIRED: enroll the governance project owner."}\n'
+E        +  where '{"status": "blocked", "error": "ACCESS_BOOTSTRAP_REQUIRED: enroll the governance project owner."}\n' = <Result SystemExit(2)>.stderr
+
+tests\unit\test_cli_analyze.py:93: AssertionError
+__________________ test_cli_analyze_rejects_overlapping_path __________________
+
+tmp_path = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-744/test_cli_analyze_rejects_overl0')
+
+    def test_cli_analyze_rejects_overlapping_path(tmp_path: Path) -> None:
+        fixture_path = Path(__file__).parents[1] / "fixtures" / "ember-classic-mini"
+    
+        result = runner.invoke(
+            app,
+            [
+                "analyze",
+                str(fixture_path),
+                "--output",
+                str(fixture_path / "nested_output"),
+                "--fake-runtime",
+            ],
+        )
+    
+        assert result.exit_code == 2
+>       assert "must not overlap" in result.stderr
+E       assert 'must not overlap' in '{"status": "blocked", "error": "ACCESS_BOOTSTRAP_REQUIRED: enroll the governance project owner."}\n'
+E        +  where '{"status": "blocked", "error": "ACCESS_BOOTSTRAP_REQUIRED: enroll the governance project owner."}\n' = <Result SystemExit(2)>.stderr
+
+tests\unit\test_cli_analyze.py:111: AssertionError
+__________________ test_cli_plan_lifecycle_with_fake_runtime __________________
+
+tmp_path = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-744/test_cli_plan_lifecycle_with_f0')
+
+    def test_cli_plan_lifecycle_with_fake_runtime(tmp_path: Path) -> None:
+        fixture_dir = Path(__file__).parents[1] / "fixtures" / "ember-classic-mini"
+        state_dir = tmp_path / "state"
+        output_dir = tmp_path / "output"
+    
+        # 1. agent plan create
+        create_res = runner.invoke(
+            app,
+            [
+                "plan",
+                "create",
+                str(fixture_dir),
+                "--output",
+                str(output_dir),
+                "--state-dir",
+                str(state_dir),
+                "--fake-runtime",
+            ],
+        )
+>       assert create_res.exit_code == 0, create_res.output
+E       AssertionError: {"status": "blocked", "error": "ACCESS_BOOTSTRAP_REQUIRED: enroll the governance project owner."}
+E         
+E       assert 2 == 0
+E        +  where 2 = <Result SystemExit(2)>.exit_code
+
+tests\unit\test_cli_plan.py:32: AssertionError
+____________________________ test_cli_plan_reject _____________________________
+
+tmp_path = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-744/test_cli_plan_reject0')
+
+    def test_cli_plan_reject(tmp_path: Path) -> None:
+        fixture_dir = Path(__file__).parents[1] / "fixtures" / "ember-classic-mini"
+        state_dir = tmp_path / "state"
+        output_dir = tmp_path / "output"
+    
+        create_res = runner.invoke(
+            app,
+            [
+                "plan",
+                "create",
+                str(fixture_dir),
+                "--output",
+                str(output_dir),
+                "--state-dir",
+                str(state_dir),
+                "--fake-runtime",
+            ],
+        )
+>       assert create_res.exit_code == 0
+E       assert 2 == 0
+E        +  where 2 = <Result SystemExit(2)>.exit_code
+
+tests\unit\test_cli_plan.py:138: AssertionError
+_____________________ test_cli_plan_mode_c_cannot_approve _____________________
+
+tmp_path = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-744/test_cli_plan_mode_c_cannot_ap0')
+
+    def test_cli_plan_mode_c_cannot_approve(tmp_path: Path) -> None:
+        fixture_dir = Path(__file__).parents[1] / "fixtures" / "ember-classic-mini"
+        state_dir = tmp_path / "state"
+        output_dir = tmp_path / "output"
+    
+        create_res = runner.invoke(
+            app,
+            [
+                "plan",
+                "create",
+                str(fixture_dir),
+                "--output",
+                str(output_dir),
+                "--state-dir",
+                str(state_dir),
+                "--fake-runtime",
+            ],
+        )
+>       plan_id = json.loads(create_res.output)["plan_id"]
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'plan_id'
+
+tests\unit\test_cli_plan.py:181: KeyError
+_____________________________ test_cli_run_resume _____________________________
+
+tmp_path = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-744/test_cli_run_resume0')
+
+    def test_cli_run_resume(tmp_path: Path) -> None:
+        fixture_dir = tmp_path / "repo"
+        shutil.copytree(Path(__file__).parents[1] / "fixtures" / "ember-classic-mini", fixture_dir)
+        for args in [
+            ("init",),
+            ("add", "."),
+            (
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "-c",
+                "commit.gpgsign=false",
+                "commit",
+                "-m",
+                "Fixture",
+            ),
+        ]:
+            subprocess.run(["git", *args], cwd=fixture_dir, check=True, capture_output=True)
+        state_dir = tmp_path / "state"
+        output_dir = tmp_path / "gov"
+        report_output_dir = tmp_path / "reports"
+        staging_root = tmp_path / "staging"
+    
+        run_id = "run-cli-resume-1"
+        plan_id = _create_and_approve_plan(fixture_dir, state_dir, output_dir, run_id=run_id)
+    
+        # First, stage the run so it's in STAGED state
+        stage_res = runner.invoke(
+            app,
+            [
+                "stage",
+                str(fixture_dir),
+                "--plan",
+                plan_id,
+                "--state-dir",
+                str(state_dir),
+                "--staging-root",
+                str(staging_root),
+            ],
+        )
+>       assert stage_res.exit_code == 0, stage_res.output
+E       AssertionError: {"status": "blocked", "error": "ACCESS_BOOTSTRAP_REQUIRED: enroll the governance project owner."}
+E         
+E       assert 2 == 0
+E        +  where 2 = <Result SystemExit(2)>.exit_code
+
+tests\unit\test_cli_run_lifecycle.py:149: AssertionError
+______________________ test_cli_plan_create_with_critic _______________________
+
+tmp_path = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-744/test_cli_plan_create_with_crit0')
+
+    def test_cli_plan_create_with_critic(tmp_path: Path) -> None:
+        fixture_path = Path(__file__).parents[1] / "fixtures" / "ember-classic-mini"
+        result = runner.invoke(
+            app,
+            [
+                "plan",
+                "create",
+                str(fixture_path),
+                "--output",
+                str(tmp_path),
+                "--fake-runtime",
+                "--critic",
+            ],
+        )
+>       assert result.exit_code == 0, result.output
+E       AssertionError: {"status": "blocked", "error": "ACCESS_BOOTSTRAP_REQUIRED: enroll the governance project owner."}
+E         
+E       assert 2 == 0
+E        +  where 2 = <Result SystemExit(2)>.exit_code
+
+tests\unit\test_cli_specialists.py:27: AssertionError
+_________________________ test_cli_preview_lifecycle __________________________
+
+tmp_path = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-744/test_cli_preview_lifecycle0')
+
+    def test_cli_preview_lifecycle(tmp_path: Path) -> None:
+        fixture_dir = Path(__file__).parents[1] / "fixtures" / "ember-classic-mini"
+        state_dir = tmp_path / "state"
+        plan_output = tmp_path / "plan_gov"
+        preview_output = tmp_path / "preview_out"
+    
+>       plan_id = _create_and_approve_plan(fixture_dir, state_dir, plan_output)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\unit\test_cli_transformation.py:78: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+fixture_dir = WindowsPath('C:/Projects/New folder/migration-agent/tests/fixtures/ember-classic-mini')
+state_dir = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-744/test_cli_preview_lifecycle0/state')
+output_dir = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-744/test_cli_preview_lifecycle0/plan_gov')
+
+    def _create_and_approve_plan(
+        fixture_dir: Path,
+        state_dir: Path,
+        output_dir: Path,
+    ) -> str:
+        """Generate plan sign-off, which does not authorize source apply."""
+        if fixture_dir.is_relative_to(state_dir.parent) and not (fixture_dir / ".git").exists():
+            for args in [
+                ("init",),
+                ("add", "."),
+                (
+                    "-c",
+                    "user.name=Fixture",
+                    "-c",
+                    "user.email=fixture@example.invalid",
+                    "-c",
+                    "commit.gpgsign=false",
+                    "commit",
+                    "-m",
+                    "Fixture",
+                ),
+            ]:
+                subprocess.run(["git", *args], cwd=fixture_dir, check=True, capture_output=True)
+        create_res = runner.invoke(
+            app,
+            [
+                "plan",
+                "create",
+                str(fixture_dir),
+                "--output",
+                str(output_dir),
+                "--state-dir",
+                str(state_dir),
+                "--fake-runtime",
+            ],
+        )
+>       assert create_res.exit_code == 0, create_res.output
+E       AssertionError: {"status": "blocked", "error": "ACCESS_BOOTSTRAP_REQUIRED: enroll the governance project owner."}
+E         
+E       assert 2 == 0
+E        +  where 2 = <Result SystemExit(2)>.exit_code
+
+tests\unit\test_cli_transformation.py:51: AssertionError
+__________________________ test_cli_stage_lifecycle ___________________________
+
+tmp_path = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-744/test_cli_stage_lifecycle0')
+
+    def test_cli_stage_lifecycle(tmp_path: Path) -> None:
+        fixture_dir = tmp_path / "repo"
+        shutil.copytree(Path(__file__).parents[1] / "fixtures" / "ember-classic-mini", fixture_dir)
+        state_dir = tmp_path / "state"
+        plan_output = tmp_path / "plan_gov"
+        staging_root = tmp_path / "staging_root"
+    
+>       plan_id = _create_and_approve_plan(fixture_dir, state_dir, plan_output)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\unit\test_cli_transformation.py:127: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+fixture_dir = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-744/test_cli_stage_lifecycle0/repo')
+state_dir = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-744/test_cli_stage_lifecycle0/state')
+output_dir = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-744/test_cli_stage_lifecycle0/plan_gov')
+
+    def _create_and_approve_plan(
+        fixture_dir: Path,
+        state_dir: Path,
+        output_dir: Path,
+    ) -> str:
+        """Generate plan sign-off, which does not authorize source apply."""
+        if fixture_dir.is_relative_to(state_dir.parent) and not (fixture_dir / ".git").exists():
+            for args in [
+                ("init",),
+                ("add", "."),
+                (
+                    "-c",
+                    "user.name=Fixture",
+                    "-c",
+                    "user.email=fixture@example.invalid",
+                    "-c",
+                    "commit.gpgsign=false",
+                    "commit",
+                    "-m",
+                    "Fixture",
+                ),
+            ]:
+                subprocess.run(["git", *args], cwd=fixture_dir, check=True, capture_output=True)
+        create_res = runner.invoke(
+            app,
+            [
+                "plan",
+                "create",
+                str(fixture_dir),
+                "--output",
+                str(output_dir),
+                "--state-dir",
+                str(state_dir),
+                "--fake-runtime",
+            ],
+        )
+>       assert create_res.exit_code == 0, create_res.output
+E       AssertionError: {"status": "blocked", "error": "ACCESS_BOOTSTRAP_REQUIRED: enroll the governance project owner."}
+E         
+E       assert 2 == 0
+E        +  where 2 = <Result SystemExit(2)>.exit_code
+
+tests\unit\test_cli_transformation.py:51: AssertionError
+___________________ test_cli_stage_unapproved_plan_rejected ___________________
+
+tmp_path = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-744/test_cli_stage_unapproved_plan0')
+
+    def test_cli_stage_unapproved_plan_rejected(tmp_path: Path) -> None:
+        fixture_dir = Path(__file__).parents[1] / "fixtures" / "ember-classic-mini"
+        state_dir = tmp_path / "state"
+        plan_output = tmp_path / "plan_gov"
+    
+        # Create plan but DO NOT approve it
+        create_res = runner.invoke(
+            app,
+            [
+                "plan",
+                "create",
+                str(fixture_dir),
+                "--output",
+                str(plan_output),
+                "--state-dir",
+                str(state_dir),
+                "--fake-runtime",
+            ],
+        )
+>       assert create_res.exit_code == 0
+E       assert 2 == 0
+E        +  where 2 = <Result SystemExit(2)>.exit_code
+
+tests\unit\test_cli_transformation.py:168: AssertionError
+__________________________ test_cli_apply_lifecycle ___________________________
+
+tmp_path = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-744/test_cli_apply_lifecycle0')
+
+    def test_cli_apply_lifecycle(tmp_path: Path) -> None:
+        fixture_dir = Path(__file__).parents[1] / "fixtures" / "ember-classic-mini"
+        target_repo = tmp_path / "target_repo"
+        shutil.copytree(fixture_dir, target_repo)
+    
+        state_dir = tmp_path / "state"
+        plan_output = tmp_path / "plan_gov"
+        backup_root = tmp_path / "backups"
+    
+>       plan_id = _create_and_approve_plan(target_repo, state_dir, plan_output)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\unit\test_cli_transformation.py:197: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+fixture_dir = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-744/test_cli_apply_lifecycle0/target_repo')
+state_dir = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-744/test_cli_apply_lifecycle0/state')
+output_dir = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-744/test_cli_apply_lifecycle0/plan_gov')
+
+    def _create_and_approve_plan(
+        fixture_dir: Path,
+        state_dir: Path,
+        output_dir: Path,
+    ) -> str:
+        """Generate plan sign-off, which does not authorize source apply."""
+        if fixture_dir.is_relative_to(state_dir.parent) and not (fixture_dir / ".git").exists():
+            for args in [
+                ("init",),
+                ("add", "."),
+                (
+                    "-c",
+                    "user.name=Fixture",
+                    "-c",
+                    "user.email=fixture@example.invalid",
+                    "-c",
+                    "commit.gpgsign=false",
+                    "commit",
+                    "-m",
+                    "Fixture",
+                ),
+            ]:
+                subprocess.run(["git", *args], cwd=fixture_dir, check=True, capture_output=True)
+        create_res = runner.invoke(
+            app,
+            [
+                "plan",
+                "create",
+                str(fixture_dir),
+                "--output",
+                str(output_dir),
+                "--state-dir",
+                str(state_dir),
+                "--fake-runtime",
+            ],
+        )
+>       assert create_res.exit_code == 0, create_res.output
+E       AssertionError: {"status": "blocked", "error": "ACCESS_BOOTSTRAP_REQUIRED: enroll the governance project owner."}
+E         
+E       assert 2 == 0
+E        +  where 2 = <Result SystemExit(2)>.exit_code
+
+tests\unit\test_cli_transformation.py:51: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/contract/test_mcp_server.py::test_host_analysis_proposal_over_transport_is_idempotent[asyncio]
+FAILED tests/unit/test_cli_analyze.py::test_cli_analyze_command_default_gemini
+FAILED tests/unit/test_cli_analyze.py::test_cli_analyze_command_openai_provider
+FAILED tests/unit/test_cli_analyze.py::test_cli_analyze_command_custom_model
+FAILED tests/unit/test_cli_analyze.py::test_cli_analyze_rejects_unsupported_provider
+FAILED tests/unit/test_cli_analyze.py::test_cli_analyze_rejects_overlapping_path
+FAILED tests/unit/test_cli_plan.py::test_cli_plan_lifecycle_with_fake_runtime
+FAILED tests/unit/test_cli_plan.py::test_cli_plan_reject - assert 2 == 0
+FAILED tests/unit/test_cli_plan.py::test_cli_plan_mode_c_cannot_approve - Key...
+FAILED tests/unit/test_cli_run_lifecycle.py::test_cli_run_resume - AssertionE...
+FAILED tests/unit/test_cli_specialists.py::test_cli_plan_create_with_critic
+FAILED tests/unit/test_cli_transformation.py::test_cli_preview_lifecycle - As...
+FAILED tests/unit/test_cli_transformation.py::test_cli_stage_lifecycle - Asse...
+FAILED tests/unit/test_cli_transformation.py::test_cli_stage_unapproved_plan_rejected
+FAILED tests/unit/test_cli_transformation.py::test_cli_apply_lifecycle - Asse...
+!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 15 failures !!!!!!!!!!!!!!!!!!!!!!!!!!
+15 failed, 175 passed, 1 skipped in 120.09s (0:02:00)

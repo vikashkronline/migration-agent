@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from migration_agent.adapters import (
     FakeAgentRuntime,
     GitGovernanceAdapter,
@@ -62,6 +64,88 @@ def _sample_analysis(inventory: ProjectInventory) -> AnalysisResult:
     )
 
 
+def test_planning_receives_only_accepted_external_decisions(tmp_path: Path) -> None:
+    from migration_agent.adapters import GitKnowledgeAdapter
+    from migration_agent.domain.knowledge import ArchitecturalDecisionRecord, DecisionStatus
+    from migration_agent.ports import PlanningRequest
+
+    requests: list[PlanningRequest] = []
+
+    class CapturingRuntime(FakeAgentRuntime):
+        def plan(self, request: PlanningRequest):
+            requests.append(request)
+            return super().plan(request)
+
+    project = tmp_path / "governance"
+    knowledge = GitKnowledgeAdapter()
+    for decision_id, status in (
+        ("ADR-003", DecisionStatus.ACCEPTED),
+        ("ADR-002", DecisionStatus.SUPERSEDED),
+        ("ADR-001", DecisionStatus.ACCEPTED),
+        ("ADR-004", DecisionStatus.PROPOSED),
+        ("ADR-005", DecisionStatus.REJECTED),
+    ):
+        knowledge.save_decision(
+            str(project),
+            ArchitecturalDecisionRecord(
+                decision_id=decision_id,
+                title="Target architecture",
+                status=status,
+                context="Migration baseline",
+                decision="Use the confirmed target baseline.",
+                consequences="Foundation must precede feature work.",
+                decided_by="operator",
+            ),
+        )
+    store = SqliteCheckpointStore(tmp_path / "state")
+    service = PlanningService(
+        runtime=CapturingRuntime(),
+        checkpoint_store=store,
+        audit_logger=store,
+        governance=GitGovernanceAdapter(),
+        knowledge=knowledge,
+    )
+    inventory = _sample_inventory()
+    service.create_plan(inventory, _sample_analysis(inventory), str(project), model="offline")
+    assert [d.decision_id for d in requests[0].accepted_decisions] == ["ADR-001", "ADR-003"]
+    assert all(d.status == DecisionStatus.ACCEPTED for d in requests[0].accepted_decisions)
+    assert requests[0].inventory.repository.root == inventory.repository.root
+
+
+def test_planning_bounds_architecture_context_before_runtime(tmp_path: Path) -> None:
+    from unittest.mock import Mock
+
+    from migration_agent.adapters import GitKnowledgeAdapter
+    from migration_agent.domain.knowledge import ArchitecturalDecisionRecord
+
+    knowledge = GitKnowledgeAdapter()
+    project = tmp_path / "project"
+    knowledge.save_decision(
+        str(project),
+        ArchitecturalDecisionRecord(
+            decision_id="ADR-001",
+            title="Large decision",
+            context="Migration",
+            decision="x" * 65_537,
+            consequences="Stop",
+            decided_by="operator",
+        ),
+    )
+    store = SqliteCheckpointStore(tmp_path / "state")
+    runtime = Mock()
+    service = PlanningService(
+        runtime=runtime,
+        checkpoint_store=store,
+        audit_logger=store,
+        governance=GitGovernanceAdapter(),
+        knowledge=knowledge,
+    )
+    inventory = _sample_inventory()
+    with pytest.raises(ValueError, match="ARCHITECTURE_CONTEXT_TOO_LARGE"):
+        service.create_plan(inventory, _sample_analysis(inventory), str(project), model="offline")
+    runtime.plan.assert_not_called()
+
+
 def test_planning_service_create_and_lifecycle(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -96,6 +180,8 @@ def test_planning_service_create_and_lifecycle(tmp_path: Path) -> None:
     assert validation.is_valid is True
     assert plan.status == PlanStatus.NEEDS_APPROVAL
     assert len(plan.steps) >= 1
+    assert plan.source_root == str(inventory.repository.root.resolve())
+    assert plan.source_root != str(project_root)
 
     # Verify SQLite persistence
     stored_plan = checkpoint_store.get_plan(plan.plan_id)

@@ -50,6 +50,7 @@ class MigrationStep(BaseModel):
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     evidence: list[EvidenceReference] = Field(default_factory=list)
     expected_files: list[str] = Field(default_factory=list)
+    target_files: list[str] = Field(default_factory=list, max_length=100)
     validation_strategy: list[str] = Field(default_factory=list)
     rollback_note: str = Field(default="")
     acceptance_criteria: list[str] = Field(default_factory=list)
@@ -88,7 +89,7 @@ class MigrationPlan(BaseModel):
 
 def canonical_step_payload(step: MigrationStep) -> dict[str, Any]:
     """Extract deterministic, canonical payload of a step for digest computation."""
-    return {
+    payload = {
         "step_id": step.step_id,
         "title": step.title,
         "description": step.description,
@@ -111,6 +112,9 @@ def canonical_step_payload(step: MigrationStep) -> dict[str, Any]:
         "acceptance_criteria": sorted(step.acceptance_criteria),
         "unresolved_questions": sorted(step.unresolved_questions),
     }
+    if step.target_files:
+        payload["target_files"] = sorted(step.target_files)
+    return payload
 
 
 def compute_plan_digest(plan: MigrationPlan) -> str:

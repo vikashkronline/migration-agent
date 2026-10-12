@@ -1,0 +1,5 @@
+node_modules
+.angular
+package-lock.json
+tests/artifacts
+tests/python-results.xml

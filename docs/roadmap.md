@@ -47,3 +47,23 @@ The authoritative phase definitions and requirements are governed by `plannings/
     Structured compiler/spec diagnostic parser (`TS2304`, `TS2551`, `NullInjectorError`), deterministic surgical repair strategies (`AutoImportRepairStrategy`, `SignalCallRepairStrategy`, `SpecTestBedRepairStrategy`), precedence repair loop.
 18. **Phase 15: Streamlined Migration Pipeline & Semantic Evaluation** — **Complete.**
     Unified end-to-end `agent migrate` pipeline, Mode B approval, dry-run previews, ADR-8 controlled apply, semantic evaluation benchmarking (`compilation_pass_rate`, `spec_pass_rate`, `control_flow_fidelity`).
+
+## Phase 16 implementation and acceptance
+
+16A inspection, 16B durable proposals, 16C shared staging/validation/approval/apply,
+and 16D configuration/host packs passed combined repository checks: 444 passed,
+2 skipped, lint/format/type checks and both doctor aliases passed. Live
+Antigravity/Codex, operator signing, real container, provider, and Linux acceptance
+remain pending per [smoke checklists](phase-16-smoke-checklists.md). Complete these
+before declaring Phase 16 accepted. Full GUI development is a separate phase.
+
+**Native amendment:** implemented for explicitly trusted Windows projects without
+Docker/WSL/Linux. See [operations](native-validation.md) and the implementation
+report for current repository gates. Native IDE/operator, real container, provider
+and Linux acceptance remain separate measured journeys.
+
+**Application UI/UX amendment:** the shared host/CLI path now has mandatory browser
+capture/review and bounded repair, optional source reference and optional final E2E.
+Direct provider image/code transfer requires explicit authorization. Repository
+gate results and remaining live journeys are tracked in the
+[implementation report](../plannings/browser-ui-ux-validation-implementation-report.md).

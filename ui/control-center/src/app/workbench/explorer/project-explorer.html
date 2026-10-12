@@ -1,0 +1,117 @@
+<h2 class="h6 mb-3 d-flex align-items-center gap-2">
+  <cc-icon name="boxes" />
+  <span>Project explorer</span>
+</h2>
+<div class="mb-2">
+  <label class="form-label small visually-hidden" for="explorer-search">Find an item</label>
+  <div class="input-group input-group-sm">
+    <span class="input-group-text bg-body-tertiary border-end-0">
+      <cc-icon name="search" size="0.85em" />
+    </span>
+    <input
+      id="explorer-search"
+      #query
+      class="form-control border-start-0 ps-0"
+      type="search"
+      placeholder="Find an item…"
+      maxlength="128"
+      [value]="store.query()"
+      (input)="store.search(query.value)"
+    />
+  </div>
+</div>
+<label class="form-check small mb-3 d-flex align-items-center gap-2">
+  <input
+    class="form-check-input mt-0"
+    type="checkbox"
+    [checked]="store.attention()"
+    (change)="store.toggleAttention()"
+  />
+  <span class="d-inline-flex align-items-center gap-1">
+    <cc-icon name="funnel" size="0.85em" />
+    <span>Needs attention only</span>
+  </span>
+</label>
+@if (store.treeLoading()) {
+<p class="small" role="status">Loading project explorer…</p>
+}
+<nav aria-label="Project hierarchy">
+  <ul class="list-unstyled">
+    @for (row of store.rows(); track row.node.node_id) {
+    <li class="mb-1" [style.padding-inline-start.rem]="row.depth * 0.65">
+      <div class="d-flex align-items-start gap-1">
+        @if (row.node.child_count) {
+        <button
+          class="btn btn-sm border-0 px-1 mt-1 text-body-secondary"
+          [attr.aria-label]="'Expand or collapse ' + row.node.label"
+          [attr.aria-expanded]="store.expanded().has(row.node.node_id)"
+          (click)="store.toggle(row.node)"
+        >
+          <cc-icon
+            [name]="store.expanded().has(row.node.node_id) ? 'chevron-down' : 'chevron-right'"
+            size="0.75em"
+          />
+        </button>
+        }
+        <a
+          class="btn btn-sm text-start flex-grow-1 text-break d-flex flex-column"
+          [class.btn-primary]="store.selection().nodeId === row.node.node_id"
+          [attr.aria-current]="store.selection().nodeId === row.node.node_id ? 'page' : null"
+          [routerLink]="['/projects', store.session()?.project_id ?? store.detail()?.project_id ?? '', 'items', row.node.node_id]"
+          (click)="selected.emit()"
+        >
+          <span class="d-inline-flex align-items-center gap-2">
+            <cc-icon [name]="getNodeIcon(row.node)" size="0.95em" />
+            <span class="fw-semibold">{{ row.node.label }}</span>
+          </span>
+          <span class="d-flex flex-wrap align-items-center gap-1 mt-1">
+            <cc-status-badge
+              [status]="row.node.status"
+              [tone]="row.node.status_tone ?? 'neutral'"
+              [kind]="row.node.kind"
+              [taskCount]="row.node.task_count"
+            />
+            @if (row.node.task_count) {
+            <span class="small opacity-75">
+              {{row.node.complete_count}} / {{row.node.task_count}}
+            </span>
+            } @else if (row.node.kind === 'group' && row.node.child_count > 0) {
+            <span class="small opacity-75">
+              {{row.node.child_count}} ref{{row.node.child_count === 1 ? '' : 's'}}
+            </span>
+            }
+          </span>
+        </a>
+      </div>
+      @if (store.expanded().has(row.node.node_id)) { @if (store.branchPages().get(row.node.node_id);
+      as branch) { @if (branch.loading) {
+      <p class="small mb-1" role="status">Loading branch…</p>
+      } @if (branch.error) {
+      <p class="small text-warning-emphasis">
+        {{branch.error.message}}
+        <button class="btn btn-sm btn-link" (click)="store.loadBranch(row.node.node_id)">
+          Retry branch
+        </button>
+      </p>
+      } @if (branch.next !== null && !branch.loading && !branch.error) {
+      <button
+        class="btn btn-sm btn-link"
+        [attr.aria-label]="'Load more in ' + row.node.label"
+        (click)="store.loadBranch(row.node.node_id, true)"
+      >
+        Load more items
+      </button>
+      } } }
+    </li>
+    } @empty {
+    <li class="small text-body-secondary">No matching recorded items.</li>
+    }
+  </ul>
+</nav>
+@if (store.query() || store.attention()) {
+<p class="small">{{store.searchTotal()}} matching recorded items.</p>
+@if (store.searchNext() !== null) {
+<button class="btn btn-sm btn-outline-primary" (click)="store.moreMatches()">
+  Load more matches
+</button>
+} }

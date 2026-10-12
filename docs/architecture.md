@@ -1,5 +1,58 @@
 # Architecture
 
+## Configuration authority and runtime composition
+
+Public configuration contracts live in the domain. The application resolver/service consumes
+typed ports and never imports provider SDKs, HTTP, Typer, filesystem implementations or global
+settings. CLI, Control API and MCP compose the same service through bounded adapters. Framework
+preset and installed-environment checks remain in adapters.
+
+Shared configuration is protected by the existing signed rules revision. A signed file-change
+intent binds previous bytes and candidate content; activation/recovery uses the existing trust
+anchor and current revision pointer. Empty file-change fields remain omitted from historical
+signed proposals to preserve existing signature/digest compatibility. There is no unsigned
+configuration authority pointer.
+
+Operational proposals, receipts and checks reuse the existing SQLite store. A short configuration
+writer guard serializes publication; the existing access fence protects activation and file
+checkpoints. Reads verify the active revision without holding a writer lock. Provider calls,
+installed-tool probes, human review and worker shutdown waits run outside activation fences.
+This avoids introducing a worker-quiescence wait into access activation.
+
+Model requests and workflow operations retain effective snapshots and provenance. Fresh authority
+is checked before use and at checkpoints. A local selection applies to the next operation; it
+cannot alter an in-flight operation. A shared signed revision invalidates old access contexts.
+Configuration checks retain exact immutable requests; interrupted provider calls cannot be
+automatically replayed because a completed remote call may have lost its local receipt.
+
+See [configuration operations](project-configuration.md) for scopes, capability adoption,
+activation, recovery, legacy handling and explicit product boundaries.
+
+## Control Center implementation amendment — 2026-10-07
+
+`WorkbenchService` owns the typed, provider-neutral inspection/command boundary.
+Its `WorkSourcePort` supplies project/group/task/reference headers, scoped details,
+actions, evidence, durable receipts and invalidations. No Angular, filesystem,
+SQLite or migration adapter is imported into this application boundary.
+
+`CanonicalWorkbench` is the outer adapter for existing plan/workflow records. It
+uses the shared external SQLite store and transaction-triggered scoped invalidation
+journal, plus guarded governance-reference reads. It instantiates `WorkflowRuntime`
+only on an authorized command. Source inspection is read-only. Unknown project
+implementation scope stays unknown; the workbench is not a new lifecycle engine.
+
+`agent ui` composes trusted actor/assurance/grants and serves the production Angular
+bundle through the authenticated loopback Control API. The browser controls
+selection, disclosure, history and rendering; server records own progress and
+action eligibility. Legacy flat GUI endpoints, event-only apply and fabricated
+plan approval are unavailable in this bound integration. Browser credentials and
+CSRF are separate; exact approval remains the existing human-terminal service.
+
+The client uses Standalone components, Signals/OnPush, local Bootstrap utilities,
+native modal dialogs and safe Mermaid image rendering. A complete review editor,
+new Q&A provider and speculative module-readiness store are outside this slice.
+See [contracts and operational details](control-center.md).
+
 ## Current boundary
 
 Phases 0 through 3 contain configuration, typed domain models, a CLI health check,
@@ -222,3 +275,70 @@ Phase 8 introduces specialized subagent personas driven by offline evaluation me
 
 
 
+
+## Phase 16 application boundaries
+
+Host proposals and apply are application services behind typed ports. SQLite workflow/validation/approval persistence, Git evidence, OS locks, container execution, public-key proof, human console, and MCP/CLI composition are adapters. Mechanical operations are deterministic; host/provider output remains untrusted. External operational roots preserve clean source bases. See [design decisions](phase-16-host-workflow.md) and [approval trust limits](phase-16-client-setup.md).
+
+## Native execution boundary
+
+Typed execution modes, consent and provenance are domain contracts. The shared
+application validation/apply gate verifies immutable backend evidence. Launcher
+selection, offline toolchain resolution, human consent storage/signing, positive
+environments and Windows Job Object/Linux guardian supervision are adapters.
+Native execution retains account permissions; strict isolation requires containers.
+See [native operations](native-validation.md).
+
+## Browser UI/UX evidence
+
+Browser coverage/rules/capture/review contracts live in the domain. Application
+code deterministically checks complete review, hash references and repair scope.
+Browser/server execution, image storage and MCP/CLI presentation are adapters.
+The opt-in visual adapter alone imports the provider SDKs. It sends bounded actual
+PNG evidence and scoped code to fixed endpoints, then validates typed responses
+through the application review rules. Provider disclosure is a typed execution
+policy contract, bound into native consent and visual capture reuse. Models cannot
+change the launcher opt-in, destination or execution/approval authority.
+Production validation records version 3 evidence and requires the browser gate
+at review/apply. Ordinary reports and historical records cannot bypass it.
+Optional E2E executes after visual approval. That amendment did not add a Control Center GUI.
+See [browser operations](browser-ui-ux-validation.md).
+
+## Common Control Center boundary
+
+The subsequently authorized GUI uses the typed `WorkSourcePort` application
+boundary for project trees, details, commands, recorded-fact answers and durable
+invalidation. Only its canonical adapter imports persistence, source-file readers
+and migration runtime composition. The neutral domain project-work definition
+describes ownership and planning dependencies without importing migration models.
+Read-only Git declarations enrich the projection; actual workflow records retain
+execution authority, stable identity and verified progress.
+
+Angular core services own session/error handling, shared components own reusable
+presentation, and lazy workbench features own routing and interaction. A
+route-scoped signal store cancels superseded reads and reconciles durable cursor
+polling. URL parameters own selection and artifact pins. Browser requests never
+choose an actor, filesystem path or approval authority. Recorded-fact Q&A checks
+scope and freshness; provider reasoning remains an explicit CLI/host handoff.
+See [operations](control-center.md), [project declarations](project-work.md) and
+[frontend conventions](../ui/control-center/README.md).
+
+The embedded read-only diff uses neutral typed file/hunk/line projections. The
+canonical adapter verifies the exact ChangeSet, proposed-byte hashes, record/base
+bindings and file-index scope; its Git reader selects bounded immutable base
+blobs without using current source or invoking text conversion/filter tools.
+Per-file reads are authenticated and version-bound. Missing/unsupported evidence
+returns an explicit unavailable preview. Angular defers the viewer, cancels stale
+reads and renders code through text interpolation. Review has no write endpoint,
+comment store, editor or approval authority.
+
+## G1 technical standards evidence
+
+Technical rule registry and exhaustive-coverage behavior uses typed
+rule/outcome models, a neutral evidence-reconciliation service and an Angular-owned
+evaluator port. The shared ApplyService supplies exact stored ChangeSets, staging
+verification and immutable validation provenance to an opt-in CLI report. Actual
+outcome rows own coverage; unresolved/manual checks remain blocked. Reports add
+no mutation or approval authority and no competing workflow store.
+Bundled knowledge excludes external project identity and business-specific details.
+See [standards scope and operation](standards-review.md).

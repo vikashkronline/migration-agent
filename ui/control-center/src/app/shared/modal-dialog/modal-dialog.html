@@ -1,0 +1,22 @@
+<dialog
+  #dialog
+  tabindex="-1"
+  class="border rounded bg-body text-body p-3 overflow-auto"
+  [class.position-fixed]="drawer()"
+  [class.top-0]="drawer()"
+  [class.start-0]="drawer()"
+  [class.m-0]="drawer()"
+  [class.vh-100]="drawer()"
+  [class.w-75]="drawer()"
+  [attr.aria-label]="label()"
+  (cancel)="dismiss($event)"
+  (keydown.escape)="dismiss($event)"
+  (click)="dismissBackdrop($event)"
+>
+  <div class="d-flex justify-content-end mb-3">
+    <button class="btn btn-sm btn-outline-secondary" (click)="dismiss()">
+      Close {{ label() }}
+    </button>
+  </div>
+  <ng-content />
+</dialog>

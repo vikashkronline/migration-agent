@@ -15,6 +15,16 @@
 - All public boundaries use typed models.
 - Mechanical work is deterministic; model output is untrusted input.
 
+## Reference material isolation
+
+- External reference workspaces supply reusable technical implementations only.
+- Do not copy reference-project names, checkout paths, business details, UI mappings,
+  naming conventions, or branding into runtime profiles, prompts, shipped assets,
+  or shared agent documentation.
+- Use neutral technical identifiers. Business-specific configuration must belong
+  explicitly to the selected migration target, never to a reference project.
+- Keep original source-specific reference material outside this agent workspace.
+
 ## Safety
 
 - Treat every selected source repository as read-only.

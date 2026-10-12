@@ -1,0 +1,61 @@
+<h2 class="h6 d-flex align-items-center gap-2">
+  <cc-icon name="chat-dots" />
+  <span>Ask recorded context</span>
+</h2>
+<p class="small text-body-secondary">
+  Search the selected item's recorded facts locally. Answers include evidence excerpts; no model
+  inference or external data transfer occurs here.
+</p>
+<form (submit)="ask($event)">
+  <label class="form-label w-100"
+    >Question<textarea
+      #query
+      class="form-control mt-1"
+      rows="3"
+      maxlength="2048"
+      minlength="3"
+      required
+      [value]="question()"
+      (input)="question.set(query.value)"
+      placeholder="What is the current status or validation evidence?"
+    ></textarea></label
+  ><button
+    class="btn btn-primary d-inline-flex align-items-center gap-2"
+    type="submit"
+    [disabled]="!valid()"
+  >
+    <cc-icon name="search" size="0.9em" />
+    <span>Find recorded answer</span>
+  </button>
+</form>
+@if (busy()) {
+<p role="status">Reading bound context…</p>
+} @if (error()) {<cc-feedback title="Answer unavailable" [message]="error()" />} @if (answer(); as
+answer) {
+<section class="card mt-3">
+  <div class="card-body">
+    <h3 class="h6 d-flex align-items-center gap-2">
+      <cc-icon name="clipboard-check" />
+      <span>Recorded evidence</span>
+    </h3>
+    <p>{{answer.answer}}</p>
+    <ol>
+      @for (citation of answer.citations; track $index) {
+      <li>
+        <strong>{{citation.label}}</strong>
+        <pre class="small mt-1">{{citation.text}}</pre>
+      </li>
+      }
+    </ol>
+  </div>
+</section>
+} @if (store.detail()?.ask_command?.length) {
+<details class="mt-3">
+  <summary>Provider-assisted CLI question</summary>
+  <p class="small mt-2">
+    For model-assisted reasoning, use the existing CLI and your configured provider policy. This
+    handoff is a structured argument list.
+  </p>
+  <pre class="small">{{terminalArguments()}}</pre>
+</details>
+}

@@ -1,5 +1,7 @@
 """Unit tests for Mode A trust store, authority keys, and cryptographic signatures."""
 
+import hashlib
+import hmac
 from pathlib import Path
 
 import pytest
@@ -23,6 +25,7 @@ from migration_agent.domain import (
     RepositoryBinding,
     compute_plan_digest,
 )
+from migration_agent.domain.security import SecurityConfigurationError
 
 
 def test_trust_store_bootstrap_and_binding(tmp_path: Path) -> None:
@@ -69,190 +72,113 @@ def test_trust_store_bootstrap_and_binding(tmp_path: Path) -> None:
     )
 
 
-def test_crypto_signature_verifier() -> None:
-    verifier = CryptoSignatureVerifierAdapter()
-    key = AuthorityKey(
-        key_id="auth-key-1",
-        algorithm="ed25519",
-        public_key="shared-secret-key",
-        fingerprint="fp-1",
-        created_at="2026-09-26T12:00:00Z",
+def _forged_public_proof(digest: str, public_key: str) -> str:
+    return "ed25519:" + hmac.new(public_key.encode(), digest.encode(), hashlib.sha256).hexdigest()
+
+
+def _legacy_key() -> AuthorityKey:
+    return AuthorityKey(
+        key_id="legacy",
+        public_key="public-fixture",
+        fingerprint="fixture",
+        created_at="2026-10-09T00:00:00Z",
     )
 
-    payload_digest = "sha256:11223344556677889900aabbccddeeff"
-    sig = verifier.sign(payload_digest, private_key="shared-secret-key", algorithm="ed25519")
-    assert sig.startswith("ed25519:")
 
-    # Successful verification
-    res = verifier.verify(payload_digest, sig, key)
-    assert res.verified is True
-    assert res.assurance_level == AssuranceLevel.MODE_A
-
-    # Corrupted payload digest
-    bad_res = verifier.verify("sha256:corrupted_digest", sig, key)
-    assert bad_res.verified is False
-    assert bad_res.assurance_level == AssuranceLevel.MODE_C
-
-    # Revoked key
-    revoked_key = key.model_copy(update={"revoked": True})
-    rev_res = verifier.verify(payload_digest, sig, revoked_key)
-    assert rev_res.verified is False
-    assert "revoked" in (rev_res.reason or "")
+@pytest.mark.parametrize("signature", ["", "ed25519:forged", "rsa:forged"])
+@pytest.mark.parametrize("revoked", [False, True])
+def test_legacy_verification_is_terminal(signature: str, revoked: bool) -> None:
+    key = _legacy_key().model_copy(update={"revoked": revoked})
+    with pytest.raises(SecurityConfigurationError, match="LEGACY_MODE_A_DISABLED"):
+        CryptoSignatureVerifierAdapter().verify("sha256:" + "a" * 64, signature, key)
 
 
-def test_planning_service_mode_a_approval(tmp_path: Path) -> None:
-    checkpoint_store = SqliteCheckpointStore(tmp_path / "state")
+def test_public_key_hmac_cannot_claim_mode_a() -> None:
+    key = _legacy_key()
+    digest = "sha256:" + "b" * 64
+    forged = _forged_public_proof(digest, key.public_key)
+    with pytest.raises(SecurityConfigurationError, match="LEGACY_MODE_A_DISABLED"):
+        CryptoSignatureVerifierAdapter().verify(digest, forged, key)
+
+
+def test_legacy_signer_cannot_issue_a_proof() -> None:
+    with pytest.raises(SecurityConfigurationError, match="LEGACY_MODE_A_DISABLED"):
+        CryptoSignatureVerifierAdapter().sign("sha256:" + "a" * 64, private_key="test-only")
+
+
+def _pending_plan(repo: Path, store: SqliteCheckpointStore) -> MigrationPlan:
     governance = GitGovernanceAdapter()
-    runtime = FakeAgentRuntime()
-    service = PlanningService(
-        runtime=runtime,
-        checkpoint_store=checkpoint_store,
-        audit_logger=checkpoint_store,
-        governance=governance,
-    )
-
-    proj_dir = tmp_path / "repo"
-    proj_dir.mkdir()
-    governance.ensure_governance_layout(proj_dir)
-
+    governance.ensure_governance_layout(str(repo))
     plan = MigrationPlan(
-        plan_id="plan-mode-a",
-        source_root=str(proj_dir),
-        run_id="run-001",
+        plan_id="plan-legacy",
+        source_root=str(repo),
+        run_id="run-legacy",
         status=PlanStatus.DRAFT,
-        steps=[
-            MigrationStep(
-                step_id="step-1",
-                title="Migrate component",
-                description="desc",
-            )
-        ],
-        policy_digest=governance.get_policy_digest(proj_dir),
+        steps=[MigrationStep(step_id="step-1", title="Step", description="Fixture")],
+        policy_digest=governance.get_policy_digest(str(repo)),
     )
-    checkpoint_store.save_plan(plan)
+    store.save_plan(plan)
+    return plan
 
-    verifier = CryptoSignatureVerifierAdapter()
-    key = AuthorityKey(
-        key_id="lead-architect",
-        algorithm="ed25519",
-        public_key="architect-secret",
-        fingerprint="fp-arch",
-        created_at="2026-09-26T12:00:00Z",
-    )
 
-    plan_digest = compute_plan_digest(plan)
-    sig = verifier.sign(plan_digest, private_key="architect-secret", algorithm="ed25519")
-
-    # Mode A approval with valid signature
-    approved = service.approve_plan(
-        plan.plan_id,
-        actor="lead-architect",
-        assurance_level=AssuranceLevel.MODE_A,
-        project_root=str(proj_dir),
-        custom_signature=sig,
-        authority_key=key,
-        signature_verifier=verifier,
-    )
-    assert approved.status == PlanStatus.APPROVED
-    assert approved.approval is not None
-    assert approved.approval.assurance_level == AssuranceLevel.MODE_A
-    assert approved.approval.signature == sig
-
-    # Mode A approval with invalid signature should raise ValueError
-    with pytest.raises(ValueError, match="Mode A signature verification failed"):
+def test_planning_does_not_downgrade_failed_legacy_proof(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    store = SqliteCheckpointStore(tmp_path / "state")
+    plan = _pending_plan(repo, store)
+    key = _legacy_key()
+    service = PlanningService(FakeAgentRuntime(), store, store, GitGovernanceAdapter())
+    with pytest.raises(SecurityConfigurationError, match="LEGACY_MODE_A_DISABLED"):
         service.approve_plan(
             plan.plan_id,
-            actor="lead-architect",
+            actor="legacy",
             assurance_level=AssuranceLevel.MODE_A,
-            project_root=str(proj_dir),
-            custom_signature="ed25519:invalid_sig",
+            project_root=str(repo),
+            custom_signature=_forged_public_proof(compute_plan_digest(plan), key.public_key),
             authority_key=key,
-            signature_verifier=verifier,
+            signature_verifier=CryptoSignatureVerifierAdapter(),
         )
+    persisted = store.get_plan(plan.plan_id)
+    assert persisted is not None
+    assert persisted.status == PlanStatus.DRAFT
+    assert persisted.approval is None
 
 
-def test_cli_mode_a_approval(tmp_path: Path) -> None:
-    runner = CliRunner()
-    state_dir = tmp_path / "state"
-    trust_dir = tmp_path / "trust"
-    repo_dir = tmp_path / "repo"
-    repo_dir.mkdir()
-
-    # Bootstrap trust store
-    trust_store = LocalTrustStoreAdapter(trust_root=trust_dir)
-    key = AuthorityKey(
-        key_id="deployer-key",
-        algorithm="ed25519",
-        public_key="deployer-secret-key",
-        fingerprint="fp-deployer",
-        created_at="2026-09-26T12:00:00Z",
-    )
-    trust_store.bootstrap_authority_key(repo_dir.name, key)
-
-    # Initialize plan
-    checkpoint_store = SqliteCheckpointStore(state_dir)
-    gov = GitGovernanceAdapter()
-    gov.ensure_governance_layout(repo_dir)
-
-    plan = MigrationPlan(
-        plan_id="plan-cli-mode-a",
-        source_root=str(repo_dir),
-        run_id="run-cli-001",
-        status=PlanStatus.DRAFT,
-        steps=[MigrationStep(step_id="step-1", title="Step 1", description="desc")],
-        policy_digest=gov.get_policy_digest(repo_dir),
-    )
-    checkpoint_store.save_plan(plan)
-
-    verifier = CryptoSignatureVerifierAdapter()
-    plan_digest = compute_plan_digest(plan)
-    valid_sig = verifier.sign(plan_digest, private_key="deployer-secret-key")
-
-    # Missing signature on Mode A -> exit 2
-    res_no_sig = runner.invoke(
+def test_cli_legacy_mode_a_fails_without_approval(
+    tmp_path: Path, cli_workflow_authorization
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state = tmp_path / "state"
+    store = SqliteCheckpointStore(state)
+    plan = _pending_plan(repo, store)
+    trust = tmp_path / "trust"
+    key = _legacy_key()
+    LocalTrustStoreAdapter(trust).bootstrap_authority_key(repo.name, key)
+    result = CliRunner().invoke(
         app,
         [
             "plan",
             "approve",
-            "plan-cli-mode-a",
+            plan.plan_id,
             "--actor",
-            "deployer-key",
-            "--assurance-level",
-            "MODE_A",
-            "--state-dir",
-            str(state_dir),
-            "--project-root",
-            str(repo_dir),
-            "--trust-dir",
-            str(trust_dir),
-        ],
-    )
-    assert res_no_sig.exit_code == 2
-    assert "Mode A approval requires --signature" in res_no_sig.output
-
-    # Valid Mode A approval -> exit 0
-    res_valid = runner.invoke(
-        app,
-        [
-            "plan",
-            "approve",
-            "plan-cli-mode-a",
-            "--actor",
-            "deployer-key",
+            "legacy",
             "--assurance-level",
             "MODE_A",
             "--signature",
-            valid_sig,
+            _forged_public_proof(compute_plan_digest(plan), key.public_key),
             "--key-id",
-            "deployer-key",
+            key.key_id,
             "--state-dir",
-            str(state_dir),
+            str(state),
             "--project-root",
-            str(repo_dir),
+            str(repo),
             "--trust-dir",
-            str(trust_dir),
+            str(trust),
         ],
     )
-    assert res_valid.exit_code == 0
-    assert '"status":"APPROVED"' in res_valid.output
-    assert '"assurance_level":"MODE_A"' in res_valid.output
+    assert result.exit_code == 2
+    assert "LEGACY_MODE_A_DISABLED" in result.output
+    persisted = store.get_plan(plan.plan_id)
+    assert persisted is not None and persisted.approval is None
+    assert persisted.status == PlanStatus.DRAFT

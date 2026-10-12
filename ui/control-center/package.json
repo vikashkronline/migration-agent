@@ -5,28 +5,42 @@
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
-    "build": "ng build",
+    "build": "ng build --configuration production",
+    "test": "ng test --watch=false",
+    "test:e2e": "node tests/workbench.cjs",
+    "lint": "eslint src",
+    "format": "prettier --write src *.json *.mjs vitest.config.ts tests/*.cjs",
+    "format:check": "prettier --check src *.json *.mjs vitest.config.ts tests/*.cjs",
     "watch": "ng build --watch --configuration development"
   },
   "dependencies": {
-    "@angular/animations": "^21.0.0",
     "@angular/common": "^21.0.0",
     "@angular/compiler": "^21.0.0",
     "@angular/core": "^21.0.0",
-    "@angular/forms": "^21.0.0",
+    "@angular/forms": "21.2.25",
     "@angular/platform-browser": "^21.0.0",
-    "@angular/platform-browser-dynamic": "^21.0.0",
     "@angular/router": "^21.0.0",
     "bootstrap": "^5.3.3",
     "mermaid": "^10.9.1",
     "rxjs": "~7.8.0",
-    "tslib": "^2.3.0",
-    "zone.js": "~0.14.0"
+    "tslib": "^2.3.0"
   },
   "devDependencies": {
-    "@angular-devkit/build-angular": "^21.0.0",
+    "@angular/build": "^21.0.0",
     "@angular/cli": "^21.0.0",
     "@angular/compiler-cli": "^21.0.0",
-    "typescript": "~5.4.2"
+    "@eslint/js": "^9.39.1",
+    "angular-eslint": "^21.0.1",
+    "eslint": "^9.39.1",
+    "eslint-config-prettier": "^10.1.8",
+    "jsdom": "^27.0.1",
+    "playwright-core": "^1.58.0",
+    "prettier": "^3.6.2",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.48.0",
+    "vitest": "^4.1.11"
+  },
+  "engines": {
+    "node": "^20.19.0 || ^22.12.0 || ^24.0.0"
   }
 }

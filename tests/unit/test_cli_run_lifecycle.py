@@ -1,8 +1,11 @@
 """Unit tests for CLI run lifecycle commands (list, show, resume) and offline evaluation."""
 
 import json
+import shutil
+import subprocess
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from migration_agent.adapters import SqliteCheckpointStore
@@ -10,6 +13,7 @@ from migration_agent.cli import app
 from migration_agent.domain import (
     ApprovalSignature,
     AssuranceLevel,
+    EvidenceReference,
     ExecutionStep,
     MigrationPlan,
     MigrationStep,
@@ -19,6 +23,7 @@ from migration_agent.domain import (
 )
 
 runner = CliRunner()
+pytestmark = pytest.mark.usefixtures("cli_workflow_authorization")
 
 
 def _create_and_approve_plan(
@@ -28,6 +33,8 @@ def _create_and_approve_plan(
         step_id="step-user-card",
         title="Migrate user card component",
         description="Extract and render user-card",
+        validation_strategy=["typecheck"],
+        evidence=[EvidenceReference(path="app/components/user-card.js", description="Source")],
         expected_files=[
             "src/app/components/user-card/user-card.component.ts",
             "src/app/components/user-card/user-card.component.html",
@@ -101,7 +108,24 @@ def test_cli_run_list_and_show(tmp_path: Path) -> None:
 
 
 def test_cli_run_resume(tmp_path: Path) -> None:
-    fixture_dir = Path(__file__).parents[1] / "fixtures" / "ember-classic-mini"
+    fixture_dir = tmp_path / "repo"
+    shutil.copytree(Path(__file__).parents[1] / "fixtures" / "ember-classic-mini", fixture_dir)
+    for args in [
+        ("init",),
+        ("add", "."),
+        (
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "-m",
+            "Fixture",
+        ),
+    ]:
+        subprocess.run(["git", *args], cwd=fixture_dir, check=True, capture_output=True)
     state_dir = tmp_path / "state"
     output_dir = tmp_path / "gov"
     report_output_dir = tmp_path / "reports"

@@ -1,0 +1,17 @@
+....F.....F..................                                            [100%]
+================================== FAILURES ===================================
+_________ test_accepted_flags_require_owner_signature_and_sealed_adrs _________
+tests\unit\test_control_api_stack.py:224: in test_accepted_flags_require_owner_signature_and_sealed_adrs
+    with pytest.raises(ValueError, match="FOUNDATION_ARCHITECTURE_REQUIRED"):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AssertionError: Regex pattern did not match.
+E     Expected regex: 'FOUNDATION_ARCHITECTURE_REQUIRED'
+E     Actual message: 'FOUNDATION_MAPPING_REQUIRED: resolve or explicitly defer unmapped packages.'
+____ test_public_onboarding_packet_contains_grants_without_trust_material _____
+tests\unit\test_access_http.py:68: in test_public_onboarding_packet_contains_grants_without_trust_material
+    packet = packet["data"]
+           ^^^^^^^^^^^^^^^^^
+E   KeyError: 'principal_id'
+=========================== short test summary info ===========================
+FAILED tests/unit/test_control_api_stack.py::test_accepted_flags_require_owner_signature_and_sealed_adrs
+FAILED tests/unit/test_access_http.py::test_public_onboarding_packet_contains_grants_without_trust_material

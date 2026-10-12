@@ -1,7 +1,8 @@
 """Ports for Git-governed project manifests, safety policies, and plan exports."""
 
 from datetime import UTC, datetime
-from typing import Protocol
+from pathlib import Path
+from typing import Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -25,10 +26,26 @@ class ProjectPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     schema_version: int = 1
-    default_mode: str = "MODE_B"
+    default_mode: Literal["MODE_A", "MODE_B", "MODE_C"] = "MODE_B"
     protected_paths: list[str] = Field(default_factory=lambda: [".agent/**", ".git/**"])
     max_step_files: int = 10
     require_approval_for_apply: bool = True
+    execution_mode: Literal["trusted", "container", "denied"] = "trusted"
+    native_network: Literal["host", "none"] = "host"
+    native_filesystem_isolation: bool = False
+    native_hard_resource_limits: bool = False
+
+
+class MigrationSession(BaseModel):
+    """External session roots; declarations confer no execution or apply authority."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal[1] = 1
+    source_root: Path
+    project_root: Path
+    staging_root: Path
+    state_dir: Path
 
 
 class GovernancePort(Protocol):
@@ -39,6 +56,9 @@ class GovernancePort(Protocol):
 
     def get_manifest(self, project_root: str) -> ProjectManifest | None:
         """Load the platform project manifest from .agent/manifest.json."""
+
+    def save_migration_session(self, session: MigrationSession) -> None:
+        """Persist external roots idempotently, refusing an existing different binding."""
 
     def get_policy(self, project_root: str) -> ProjectPolicy:
         """Load the active safety policy for the project."""

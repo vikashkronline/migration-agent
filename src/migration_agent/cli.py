@@ -1,6 +1,7 @@
 """Command-line entry point for Migration Agent."""
 
 import contextlib
+import getpass
 import json
 import os
 import secrets
@@ -8,7 +9,6 @@ import sys
 import time
 import uuid
 import webbrowser
-from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Annotated
 
@@ -23,8 +23,8 @@ from migration_agent.adapters import (
     EmberClassicAdapter,
     FakeAgentRuntime,
     FakeCommandRunner,
+    FoundationTransformationAdapter,
     FullStackReportWriter,
-    GeminiRuntimeAdapter,
     GitGovernanceAdapter,
     GitKnowledgeAdapter,
     InMemoryEventBroadcaster,
@@ -32,12 +32,18 @@ from migration_agent.adapters import (
     LocalTrustStoreAdapter,
     LocalWorkspaceAdapter,
     LoopbackControlServer,
-    OpenAIAgentsRuntimeAdapter,
     SafeFilesystemInspector,
     SqliteCheckpointStore,
     SubprocessCommandRunner,
     create_default_domain_adapters,
 )
+from migration_agent.adapters.access_cli import register_access_cli
+from migration_agent.adapters.access_runtime import ProjectAuthorization
+from migration_agent.adapters.cli_access import secure_cli
+from migration_agent.adapters.configuration_cli import register_configuration_cli
+from migration_agent.adapters.mcp.setup import register_setup_cli
+from migration_agent.adapters.workbench import CanonicalWorkbench
+from migration_agent.adapters.workflow_cli import register_workflow_cli
 from migration_agent.application import (
     AnalysisService,
     BoundedRepairService,
@@ -56,13 +62,13 @@ from migration_agent.application import (
     SpecialistCoordinator,
     TransformationService,
     ValidationService,
+    collect_diagnostics,
 )
+from migration_agent.application.workbench import WorkbenchService
 from migration_agent.config import Settings
 from migration_agent.domain import (
     AnalysisResult,
-    ApplyStatus,
     AssuranceLevel,
-    ChangeSet,
     EvaluationBenchmark,
     MigrationPlan,
     PlanStatus,
@@ -74,6 +80,9 @@ from migration_agent.domain import (
     compute_plan_digest,
     verify_approval,
 )
+from migration_agent.domain.inspection_access import InspectionContext
+from migration_agent.domain.redaction import RedactionPolicy
+from migration_agent.domain.workflow_access import WorkflowContext
 from migration_agent.packaging import (
     cloak_prompt_string,
     decloak_prompt_string,
@@ -91,6 +100,7 @@ from migration_agent.ports import (
     InspectionPolicy,
     SpecialistRuntimePort,
 )
+from migration_agent.ports.apply_approval import StagedWorkflowPort
 
 app = typer.Typer(
     name="agent",
@@ -98,6 +108,8 @@ app = typer.Typer(
     no_args_is_help=True,
     pretty_exceptions_enable=False,
 )
+register_access_cli(app)
+register_configuration_cli(app)
 
 plan_app = typer.Typer(
     help="Create, inspect, approve, and reject typed migration plans.",
@@ -159,14 +171,12 @@ package_app = typer.Typer(
 )
 app.add_typer(package_app, name="package")
 
-_MINIMUM_PYTHON = (3, 12)
-_RUNTIME_DISTRIBUTIONS = (
-    "google-genai",
-    "openai-agents",
-    "pydantic",
-    "pydantic-settings",
-    "typer",
+mcp_app = typer.Typer(
+    help="Model Context Protocol (MCP) server for ambient coding agents.",
+    no_args_is_help=True,
+    pretty_exceptions_enable=False,
 )
+app.add_typer(mcp_app, name="mcp")
 
 
 def _create_framework_registry() -> FrameworkAdapterRegistry:
@@ -182,65 +192,6 @@ def _create_framework_registry() -> FrameworkAdapterRegistry:
 @app.callback()
 def main() -> None:
     """Expose Migration Agent commands."""
-
-
-def _installed_runtime_versions() -> dict[str, str | None]:
-    installed: dict[str, str | None] = {}
-    for distribution in _RUNTIME_DISTRIBUTIONS:
-        try:
-            installed[distribution] = version(distribution)
-        except PackageNotFoundError:
-            installed[distribution] = None
-    return installed
-
-
-def collect_diagnostics(
-    *,
-    python_version: tuple[int, int, int] | None = None,
-    settings: Settings | None = None,
-) -> dict[str, object]:
-    """Return diagnostics without reading secrets or contacting external services."""
-    actual_python = python_version or (
-        sys.version_info.major,
-        sys.version_info.minor,
-        sys.version_info.micro,
-    )
-    configured_settings = settings or Settings()
-    runtime_versions = _installed_runtime_versions()
-
-    python_ok = actual_python[:2] >= _MINIMUM_PYTHON
-    dependencies_ok = all(value is not None for value in runtime_versions.values())
-    overall_ok = python_ok and dependencies_ok
-
-    return {
-        "checks": [
-            {
-                "details": {
-                    "actual": ".".join(str(part) for part in actual_python),
-                    "minimum": ".".join(str(part) for part in _MINIMUM_PYTHON),
-                },
-                "name": "python",
-                "status": "pass" if python_ok else "fail",
-            },
-            {
-                "details": runtime_versions,
-                "name": "runtime_dependencies",
-                "status": "pass" if dependencies_ok else "fail",
-            },
-            {
-                "details": {
-                    "configured": bool(
-                        configured_settings.agent_model and configured_settings.agent_model.strip()
-                    ),
-                    "required_for_doctor": False,
-                },
-                "name": "model_configuration",
-                "status": "pass",
-            },
-        ],
-        "schema_version": 1,
-        "status": "ok" if overall_ok else "error",
-    }
 
 
 @app.command()
@@ -280,7 +231,7 @@ def inventory_command(
             min=1,
             help="Maximum eligible text-file size to read.",
         ),
-    ] = 1_000_000,
+    ] = 5_000_000,
 ) -> None:
     """Create deterministic JSON and Markdown repository inventories."""
     service = InventoryService(
@@ -509,7 +460,32 @@ def _resolve_runtime(
     model: str | None,
     fake_runtime: bool,
     settings: Settings,
+    source_root: Path | None = None,
 ) -> tuple[AgentRuntimePort, str, str]:
+    configuration_facade = None
+    requested_provider = (provider or settings.runtime_provider or "gemini").strip().lower()
+    if requested_provider not in {"gemini", "openai", "fake"}:
+        raise ValueError(
+            "Unsupported runtime provider. Supported providers: 'gemini', 'openai', 'fake'."
+        )
+    offline = (
+        fake_runtime
+        or os.getenv("MIGRATION_AGENT_FAKE_RUNTIME") == "1"
+        or requested_provider == "fake"
+    )
+    if source_root is not None and not offline:
+        from migration_agent.adapters.configuration_runtime import ConfigurationFacade
+
+        updates: dict[str, object] = {}
+        if provider:
+            updates["runtime_provider"] = provider
+        if model:
+            updates["runtime_model"] = model
+        settings = settings.model_copy(update=updates)
+        configuration_facade = ConfigurationFacade(
+            ProjectAuthorization(source_root, settings), settings
+        )
+        settings = configuration_facade.runtime_settings(model_operation=True)
     chosen_provider = (provider or settings.runtime_provider or "gemini").strip().lower()
 
     if chosen_provider not in ("gemini", "openai", "fake"):
@@ -536,12 +512,36 @@ def _resolve_runtime(
     if use_fake:
         runtime = FakeAgentRuntime()
     elif chosen_provider == "gemini":
+        from migration_agent.adapters.gemini import GeminiRuntimeAdapter
+
         runtime = GeminiRuntimeAdapter()
     elif chosen_provider == "openai":
+        from migration_agent.adapters.agents import OpenAIAgentsRuntimeAdapter
+
         runtime = OpenAIAgentsRuntimeAdapter()
     else:
         runtime = FakeAgentRuntime()
 
+    if configuration_facade is not None:
+        from typer._click.globals import get_current_context
+
+        from migration_agent.adapters.configuration_agent_runtime import (
+            ConfigurationAgentRuntime,
+            ConfigurationSpecialistRuntime,
+        )
+
+        context = get_current_context(silent=True)
+        turn_override = None
+        if context is not None:
+            parameter_source = context.get_parameter_source("max_turns")
+            if parameter_source is not None and parameter_source.name != "DEFAULT":
+                turn_override = context.params.get("max_turns")
+        wrapper = (
+            ConfigurationSpecialistRuntime
+            if isinstance(runtime, SpecialistRuntimePort)
+            else ConfigurationAgentRuntime
+        )
+        runtime = wrapper(runtime, configuration_facade, turn_override)
     return runtime, chosen_provider, chosen_model
 
 
@@ -604,7 +604,7 @@ def analyze_command(
             min=1,
             help="Maximum eligible text-file size to read.",
         ),
-    ] = 1_000_000,
+    ] = 5_000_000,
     fake_runtime: Annotated[
         bool,
         typer.Option(
@@ -617,7 +617,7 @@ def analyze_command(
     settings = Settings()
     try:
         runtime, chosen_provider, chosen_model = _resolve_runtime(
-            provider, model, fake_runtime, settings
+            provider, model, fake_runtime, settings, path
         )
     except ValueError as err:
         typer.echo(
@@ -768,7 +768,7 @@ def plan_create_command(
     settings = Settings()
     try:
         runtime, chosen_provider, chosen_model = _resolve_runtime(
-            provider, model, fake_runtime, settings
+            provider, model, fake_runtime, settings, path
         )
     except ValueError as err:
         typer.echo(
@@ -821,6 +821,7 @@ def plan_create_command(
             governance=governance,
             validator=validator,
             specialist_runtime=specialist_rt,
+            knowledge=GitKnowledgeAdapter(),
         )
 
         target_governance_root = str(output or path)
@@ -1222,6 +1223,7 @@ def _create_transformation_service(
         filesystem=SafeFilesystemInspector(),
         checkpoint_store=checkpoint_store,
         audit_logger=checkpoint_store,
+        foundation_adapter=FoundationTransformationAdapter(),
     )
 
 
@@ -1257,6 +1259,8 @@ def _create_pipeline_service(
     governance: GitGovernanceAdapter,
     settings: Settings,
     max_repairs: int = 3,
+    workflow: StagedWorkflowPort | None = None,
+    source_root: Path | None = None,
 ) -> MigrationPipelineService:
     trans_service = _create_transformation_service(checkpoint_store)
     val_service = ValidationService(command_runner=runner, audit_logger=checkpoint_store)
@@ -1269,7 +1273,12 @@ def _create_pipeline_service(
         max_budget=max_repairs,
     )
     report_service = ReportService(checkpoint_store=checkpoint_store, audit_logger=checkpoint_store)
-    runtime = FakeAgentRuntime()
+    runtime, provider, model = _resolve_runtime(
+        None, None, isinstance(runner, FakeCommandRunner), settings, source_root
+    )
+    repair_service.specialist_runtime = (
+        runtime if isinstance(runtime, SpecialistRuntimePort) else None
+    )
     inv_service = InventoryService(
         filesystem=SafeFilesystemInspector(),
         frameworks=_create_framework_registry(),
@@ -1285,6 +1294,7 @@ def _create_pipeline_service(
         audit_logger=checkpoint_store,
         governance=governance,
         validator=RuleBasedPlanValidator(max_step_files=settings.max_step_files),
+        knowledge=GitKnowledgeAdapter(),
     )
     return MigrationPipelineService(
         checkpoint_store=checkpoint_store,
@@ -1297,6 +1307,10 @@ def _create_pipeline_service(
         inventory_service=inv_service,
         analysis_service=analysis_service,
         audit_logger=checkpoint_store,
+        workflow=workflow,
+        runtime_provider=provider,
+        runtime_model=model,
+        runtime_dry_run=isinstance(runtime, FakeAgentRuntime),
     )
 
 
@@ -1460,76 +1474,14 @@ def stage_command(
     ] = None,
 ) -> None:
     """Materialize proposed ChangeSet in an isolated staging workspace after verifying approval."""
-    settings = Settings()
-    effective_state_dir = settings.resolve_state_dir(state_dir)
-    effective_staging_root = settings.resolve_staging_root(staging_root)
-    checkpoint_store = SqliteCheckpointStore(effective_state_dir)
-    governance = GitGovernanceAdapter()
+    from migration_agent.adapters.workflow_cli import emit_error, stage_cli
 
-    plan = checkpoint_store.get_plan(plan_id)
-    if plan is None and project_root is not None:
-        plan = governance.load_plan(str(project_root), plan_id)
-    if plan is None:
-        plan = governance.load_plan(str(path), plan_id)
-
-    if plan is None:
-        typer.echo(
-            json.dumps(
-                {"error": f"Plan '{plan_id}' not found.", "status": "error"},
-                separators=(",", ":"),
-            ),
-            err=True,
-        )
-        raise typer.Exit(code=2)
-
-    if plan.status != PlanStatus.APPROVED or not verify_approval(plan):
-        typer.echo(
-            json.dumps(
-                {
-                    "error": (
-                        f"Cannot stage unapproved or modified plan '{plan_id}' "
-                        f"(status: {plan.status.value})."
-                    ),
-                    "status": "error",
-                },
-                separators=(",", ":"),
-            ),
-            err=True,
-        )
-        raise typer.Exit(code=2)
-
-    service = _create_transformation_service(checkpoint_store)
-
-    run_id = f"stage-{uuid.uuid4().hex[:8]}"
     try:
-        staging_dir, changeset = service.stage(
-            staging_root=effective_staging_root,
-            run_id=run_id,
-            source_root=path,
-            plan=plan,
-            step_id=step_id,
-        )
-    except Exception as err:
-        typer.echo(
-            json.dumps({"error": str(err), "status": "error"}, separators=(",", ":")),
-            err=True,
-        )
-        raise typer.Exit(code=2) from err
-
-    typer.echo(
-        json.dumps(
-            {
-                "changeset_digest": changeset.changeset_digest,
-                "changeset_id": changeset.changeset_id,
-                "file_count": len(changeset.changes),
-                "plan_id": plan.plan_id,
-                "staging_path": str(staging_dir),
-                "status": "ok",
-            },
-            separators=(",", ":"),
-            sort_keys=True,
-        )
-    )
+        stage_cli(path, plan_id, step_id, state_dir, staging_root)
+    except (ValueError, OSError) as error:
+        emit_error(error)
+        raise typer.Exit(2) from error
+    return
 
 
 @app.command("apply")
@@ -1560,6 +1512,7 @@ def apply_command(
             help="Optional specific changeset ID to apply.",
         ),
     ] = None,
+    staging_root: Annotated[Path | None, typer.Option("--staging-root")] = None,
     actor: Annotated[
         str,
         typer.Option(
@@ -1593,104 +1546,14 @@ def apply_command(
     ] = None,
 ) -> None:
     """Execute ADR-8 4-step controlled apply protocol with verified rollback."""
-    settings = Settings()
-    effective_state_dir = settings.resolve_state_dir(state_dir)
-    checkpoint_store = SqliteCheckpointStore(effective_state_dir)
-    governance = GitGovernanceAdapter()
+    from migration_agent.adapters.workflow_cli import apply_cli, emit_error
 
-    plan = checkpoint_store.get_plan(plan_id)
-    if plan is None and project_root is not None:
-        plan = governance.load_plan(str(project_root), plan_id)
-    if plan is None:
-        plan = governance.load_plan(str(path), plan_id)
-
-    if plan is None:
-        typer.echo(
-            json.dumps(
-                {"error": f"Plan '{plan_id}' not found.", "status": "error"},
-                separators=(",", ":"),
-            ),
-            err=True,
-        )
-        raise typer.Exit(code=2)
-
-    if plan.status != PlanStatus.APPROVED or not verify_approval(plan):
-        typer.echo(
-            json.dumps(
-                {
-                    "error": (
-                        f"Cannot apply unapproved or modified plan '{plan_id}' "
-                        f"(status: {plan.status.value})."
-                    ),
-                    "status": "error",
-                },
-                separators=(",", ":"),
-            ),
-            err=True,
-        )
-        raise typer.Exit(code=2)
-
-    service = _create_transformation_service(checkpoint_store)
-
-    changeset: ChangeSet | None = None
-    if changeset_id is not None:
-        changeset = checkpoint_store.get_changeset(changeset_id)
-        if changeset is None:
-            cs_path = Path(changeset_id)
-            if cs_path.is_file():
-                try:
-                    changeset = ChangeSet.model_validate_json(cs_path.read_text(encoding="utf-8"))
-                except Exception as read_err:
-                    typer.echo(
-                        json.dumps(
-                            {
-                                "error": f"Failed reading ChangeSet file: {read_err}",
-                                "status": "error",
-                            },
-                            separators=(",", ":"),
-                        ),
-                        err=True,
-                    )
-                    raise typer.Exit(code=2) from read_err
-
-        if changeset is None:
-            typer.echo(
-                json.dumps(
-                    {"error": f"ChangeSet '{changeset_id}' not found.", "status": "error"},
-                    separators=(",", ":"),
-                ),
-                err=True,
-            )
-            raise typer.Exit(code=2)
-    else:
-        changeset, _ = service.preview(path, plan)
-
-    result = service.apply(
-        source_root=path,
-        changeset=changeset,
-        plan=plan,
-        actor=actor,
-        backup_root=backup_root,
-    )
-
-    output_payload: dict[str, object] = {
-        "applied_paths": list(result.applied_paths),
-        "backup_snapshot_path": result.backup_snapshot_path,
-        "changeset_id": result.changeset_id,
-        "diagnostics": list(result.diagnostics),
-        "status": result.status.value,
-    }
-    if result.recovery_details:
-        output_payload["recovery_details"] = result.recovery_details
-
-    if result.status == ApplyStatus.APPLIED:
-        typer.echo(json.dumps(output_payload, separators=(",", ":"), sort_keys=True))
-    else:
-        typer.echo(
-            json.dumps(output_payload, separators=(",", ":"), sort_keys=True),
-            err=True,
-        )
-        raise typer.Exit(code=2)
+    try:
+        apply_cli(path, plan_id, changeset_id, state_dir, staging_root)
+    except (ValueError, OSError) as error:
+        emit_error(error)
+        raise typer.Exit(2) from error
+    return
 
 
 @app.command("migrate")
@@ -1824,12 +1687,21 @@ def migrate_command(
     else:
         runner = SubprocessCommandRunner()
 
+    from migration_agent.adapters.workflow_cli import runtime_for
+
+    workflow_runtime = (
+        None
+        if fake_runner or dry_run
+        else runtime_for(path, effective_state_dir, effective_staging_root)
+    )
     pipeline_service = _create_pipeline_service(
         checkpoint_store=checkpoint_store,
         runner=runner,
         governance=governance,
         settings=settings,
         max_repairs=max_repairs,
+        workflow=workflow_runtime,
+        source_root=path,
     )
 
     def interactive_confirm(plan: MigrationPlan) -> bool:
@@ -1863,6 +1735,9 @@ def migrate_command(
             err=True,
         )
         raise typer.Exit(code=2) from err
+    finally:
+        if workflow_runtime:
+            workflow_runtime.close()
 
     payload: dict[str, object] = {
         "applied_paths": list(result.applied_paths),
@@ -1883,7 +1758,7 @@ def migrate_command(
     if result.backup_snapshot_path:
         payload["backup_snapshot_path"] = result.backup_snapshot_path
 
-    if result.status in ("ok", "dry_run"):
+    if result.status in ("ok", "dry_run", "approval_required"):
         typer.echo(json.dumps(payload, separators=(",", ":"), sort_keys=True))
     elif result.status == "aborted":
         typer.echo(json.dumps(payload, separators=(",", ":"), sort_keys=True), err=True)
@@ -1950,8 +1825,51 @@ def validate_command(
             help="Custom directory for SQLite checkpoints and audit log.",
         ),
     ] = None,
+    step_id: Annotated[str | None, typer.Option("--step")] = None,
+    staging_root: Annotated[Path | None, typer.Option("--staging-root")] = None,
 ) -> None:
     """Run allowlisted validation checks against a staging workspace."""
+    if not fake_runner and (plan_id is None or step_id is None):
+        from migration_agent.adapters.workflow_cli import emit_error
+
+        emit_error(
+            ValueError(
+                "STAGED_WORKFLOW_REQUIRED: live validation requires --plan and "
+                "--step with persisted staging."
+            )
+        )
+        raise typer.Exit(2)
+    if plan_id is not None and step_id is not None:
+        from migration_agent.adapters.workflow_cli import emit_error, runtime_for
+
+        try:
+            if fake_runner:
+                raise ValueError("TEST_RUNNER_REJECTED: fake checks cannot mint apply provenance.")
+            runtime = runtime_for(path, state_dir, staging_root)
+            try:
+                record = runtime.store.get_workflow(runtime.binding.project_id, plan_id, step_id)
+                if (
+                    staging_dir
+                    and staging_dir.resolve() != Path(record.staging_path or "").resolve()
+                ):
+                    raise ValueError("STAGING_PATH_INVALID: select the persisted step workspace.")
+                operation = runtime.dispatch(
+                    "validate",
+                    plan_id,
+                    step_id,
+                    f"cli-{uuid.uuid4().hex}",
+                    profile=profile.upper(),
+                    background=False,
+                )
+                typer.echo(operation.model_dump_json())
+                if operation.status.value != "SUCCEEDED":
+                    raise typer.Exit(2)
+            finally:
+                runtime.close()
+        except (ValueError, OSError) as error:
+            emit_error(error)
+            raise typer.Exit(2) from error
+        return
     settings = Settings()
     effective_state_dir = settings.resolve_state_dir(state_dir)
     checkpoint_store = SqliteCheckpointStore(effective_state_dir)
@@ -2124,6 +2042,17 @@ def run_start_command(
     ] = None,
 ) -> None:
     """Execute end-to-end migration run: stage, validate, bounded repair, and report."""
+    if not fake_runner:
+        from migration_agent.adapters.workflow_cli import emit_error
+
+        emit_error(
+            ValueError(
+                "STAGED_WORKFLOW_REQUIRED: legacy run reports support "
+                "--fake-runner only; use agent stage, validate and validation "
+                "repair for live execution."
+            )
+        )
+        raise typer.Exit(2)
     settings = Settings()
     effective_state_dir = settings.resolve_state_dir(state_dir)
     effective_staging_root = settings.resolve_staging_root(staging_root)
@@ -2382,6 +2311,17 @@ def run_resume_command(
     ] = None,
 ) -> None:
     """Resume an interrupted migration run from its latest operational checkpoint."""
+    if not fake_runner:
+        from migration_agent.adapters.workflow_cli import emit_error
+
+        emit_error(
+            ValueError(
+                "STAGED_WORKFLOW_REQUIRED: legacy run resume supports "
+                "--fake-runner reports only; resume live validation with "
+                "agent validation repair."
+            )
+        )
+        raise typer.Exit(2)
     settings = Settings()
     effective_state_dir = settings.resolve_state_dir(state_dir)
     effective_staging_root = settings.resolve_staging_root(staging_root)
@@ -2613,7 +2553,7 @@ def ui_command(
     path: Annotated[
         Path,
         typer.Argument(
-            help="Target repository path to inspect and manage.",
+            help="Read-only source repository bound to external governance.",
         ),
     ] = Path("."),
     port: Annotated[
@@ -2645,6 +2585,10 @@ def ui_command(
             help="Predefined session token (cryptographically generated if omitted).",
         ),
     ] = None,
+    state_dir: Annotated[Path | None, typer.Option("--state-dir")] = None,
+    staging_root: Annotated[Path | None, typer.Option("--staging-root")] = None,
+    trust_root: Annotated[Path | None, typer.Option("--trust-root")] = None,
+    local_config_root: Annotated[Path | None, typer.Option("--local-config-root")] = None,
 ) -> None:
     """Launch the Local Control Center web GUI on loopback (127.0.0.1)."""
     if host not in ("127.0.0.1", "localhost"):
@@ -2679,39 +2623,62 @@ def ui_command(
 
     session_token = token if token and len(token) >= 16 else secrets.token_urlsafe(32)
 
-    checkpoint_db = target_root / ".agent" / "checkpoints.db"
-    checkpoint_store = SqliteCheckpointStore(checkpoint_db) if checkpoint_db.exists() else None
-    governance = GitGovernanceAdapter()
-    knowledge_adapter = GitKnowledgeAdapter()
+    settings = Settings()
+    updates: dict[str, object] = {}
+    if state_dir is not None:
+        updates["state_dir"] = state_dir
+    if staging_root is not None:
+        updates["staging_root"] = staging_root
+    if trust_root is not None:
+        updates["trust_root"] = trust_root
+    if local_config_root is not None:
+        updates["local_config_root"] = local_config_root
+    settings = settings.model_copy(update=updates)
+    effective_staging_root = settings.resolve_staging_root(staging_root)
+    effective_state_dir = settings.resolve_state_dir(state_dir)
+    context = InspectionContext(
+        actor=getpass.getuser(),
+        assurance=AssuranceLevel.MODE_B
+        if settings.mcp_trusted_local_reads
+        else AssuranceLevel.MODE_C,
+        capabilities=settings.mcp_read_capabilities,
+    )
+    try:
+        source = CanonicalWorkbench(
+            target_root,
+            settings,
+            WorkflowContext(
+                actor=context.actor,
+                assurance=context.assurance,
+                capabilities=settings.mcp_workflow_capabilities,
+            ),
+        )
+    except (ValueError, OSError) as error:
+        typer.echo(
+            json.dumps({"status": "error", "error": RedactionPolicy().redact_text(str(error))}),
+            err=True,
+        )
+        raise typer.Exit(2) from error
+    workbench = WorkbenchService(source, context)
     broadcaster = InMemoryEventBroadcaster()
-    discovery_service = FullStackDiscoveryService(
-        filesystem=SafeFilesystemInspector(),
-        adapters=create_default_domain_adapters(),
-    )
-    qa_service = ContextualQAService(
-        runtime=FakeAgentRuntime(),
-        knowledge_port=knowledge_adapter,
-        governance_port=governance,
-    )
-
-    control_service = ControlApiService(
-        checkpoint_port=checkpoint_store,
-        governance_port=governance,
-        event_broadcaster=broadcaster,
-        discovery_service=discovery_service,
-        knowledge_port=knowledge_adapter,
-        qa_service=qa_service,
-    )
+    control_service = ControlApiService(event_broadcaster=broadcaster)
 
     server = LoopbackControlServer(
         control_service=control_service,
         target_root=target_root,
         broadcaster=broadcaster,
+        workbench=workbench,
+        authorization=source.authorization,
+        staging_root=effective_staging_root,
+        state_dir=effective_state_dir,
+        settings=settings,
+        actor=context.actor,
     )
 
     try:
         server.start(host=host, port=port, session_token=session_token)
     except OSError as err:
+        source.close()
         typer.echo(
             json.dumps(
                 {"error": f"Failed to bind port {port}: {err}", "status": "error"},
@@ -2724,9 +2691,8 @@ def ui_command(
     access_url = f"{server.get_url()}/?token={session_token}"
 
     info_payload = {
-        "access_url": access_url,
+        "access_url": server.get_url(),
         "binding": f"http://{host}:{port}",
-        "session_token": session_token,
         "status": "running",
         "target_root": str(target_root),
     }
@@ -2741,6 +2707,7 @@ def ui_command(
             time.sleep(0.5)
     except (KeyboardInterrupt, SystemExit):
         server.stop()
+        source.close()
         typer.echo(json.dumps({"status": "stopped"}, separators=(",", ":")))
 
 
@@ -2764,6 +2731,16 @@ def init_project(
             help="Custom project identifier.",
         ),
     ] = None,
+    source: Annotated[
+        Path | None,
+        typer.Option("--source", help="Read-only source for a separate migration project."),
+    ] = None,
+    staging_root: Annotated[
+        Path | None, typer.Option("--staging-root", help="External isolated staging root.")
+    ] = None,
+    state_dir: Annotated[
+        Path | None, typer.Option("--state-dir", help="External operational state directory.")
+    ] = None,
 ) -> None:
     """Scenario A: Initialize a new project with Git-native .agent/ governance layout."""
     governance = GitGovernanceAdapter()
@@ -2773,7 +2750,24 @@ def init_project(
     fullstack_svc = FullStackDiscoveryService(inspector, create_default_domain_adapters())
     adoption_svc = ProjectAdoptionService(governance, inv_svc, fullstack_svc)
 
-    manifest = adoption_svc.init(path, project_id=project_id)
+    session = None
+    try:
+        if source is not None:
+            settings = Settings()
+            manifest, session = adoption_svc.init_migration(
+                path,
+                source,
+                settings.resolve_staging_root(staging_root),
+                settings.resolve_state_dir(state_dir),
+                project_id,
+            )
+        else:
+            if staging_root is not None or state_dir is not None:
+                raise ValueError("MISSING_SOURCE: --staging-root/--state-dir require --source.")
+            manifest = adoption_svc.init(path, project_id=project_id)
+    except (ValueError, OSError) as err:
+        typer.echo(json.dumps({"status": "blocked", "error": str(err)}), err=True)
+        raise typer.Exit(code=1) from err
     typer.echo(
         json.dumps(
             {
@@ -2781,6 +2775,19 @@ def init_project(
                 "project_id": manifest.project_id,
                 "platform_version": manifest.platform_version,
                 "path": str(path.resolve()),
+                **(
+                    {
+                        "migration_session": session.model_dump(mode="json"),
+                        "next_steps": [
+                            "Record decisions in the external project directory before planning.",
+                            "Inventory/analyze the source; plan with --output set to this project.",
+                            "Pass the recorded state/staging roots to workflow commands.",
+                            "Source apply is outside this read-only session's scope.",
+                        ],
+                    }
+                    if session is not None
+                    else {}
+                ),
             },
             indent=2,
         )
@@ -3118,7 +3125,7 @@ def ask_question(
     """Ask a contextual question bounded by project inventory, ADRs, and curated learnings."""
     settings = Settings()
     runtime, chosen_provider, chosen_model = _resolve_runtime(
-        provider, model, fake_runtime, settings
+        provider, model, fake_runtime, settings, path
     )
     knowledge_adapter = GitKnowledgeAdapter()
     governance = GitGovernanceAdapter()
@@ -3301,6 +3308,48 @@ def package_decloak_command(
     decloaked = decloak_prompt_string(cloaked)
     typer.echo(decloaked)
 
+
+@mcp_app.command("serve")
+def mcp_serve_command(
+    project_root: Annotated[
+        Path,
+        typer.Option(
+            "--project-root",
+            "-r",
+            help="Target repository root to bind and expose over MCP.",
+        ),
+    ] = Path("."),
+    state_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--state-dir",
+            help="Custom directory for SQLite checkpoints and audit log.",
+        ),
+    ] = None,
+) -> None:
+    """Run the MCP server over stdio for ambient coding agents."""
+    from migration_agent.adapters.mcp import run_mcp_server
+
+    resolved_root = project_root.resolve()
+    if not resolved_root.exists():
+        sys.stderr.write(f"Error: Project root does not exist: {resolved_root}\n")
+        raise typer.Exit(code=1)
+    if not resolved_root.is_dir():
+        sys.stderr.write(f"Error: Project root is not a directory: {resolved_root}\n")
+        raise typer.Exit(code=1)
+
+    settings = Settings()
+    effective_state_dir = settings.resolve_state_dir(state_dir)
+    run_mcp_server(
+        project_root=resolved_root,
+        state_dir=effective_state_dir,
+        settings=settings,
+    )
+
+
+register_workflow_cli(app)
+register_setup_cli(mcp_app)
+secure_cli(app)
 
 if __name__ == "__main__":
     app()

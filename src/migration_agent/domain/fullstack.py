@@ -2,6 +2,7 @@
 and cross-domain dependency graphs.
 """
 
+import hashlib
 from collections import defaultdict, deque
 from enum import StrEnum
 from typing import Any, Literal
@@ -275,13 +276,7 @@ class CrossDomainDependencyGraph(BaseModel):
 
 def _sanitize_mermaid_id(raw_id: str) -> str:
     """Sanitize raw node ID into a safe Mermaid node identifier."""
-    return (
-        raw_id.replace(":", "_")
-        .replace("/", "_")
-        .replace("-", "_")
-        .replace(".", "_")
-        .replace(" ", "_")
-    )
+    return "n_" + hashlib.sha256(raw_id.encode("utf-8")).hexdigest()
 
 
 class FullStackInventory(BaseModel):

@@ -1,0 +1,8 @@
+<article class="user-card">
+  <h2>{{ name() }}</h2>
+  <button type="button" (click)="toggleDetails()">Details</button>
+  @if (isExpanded()) {
+    <p>{{ description() }}</p>
+  }
+</article>
+

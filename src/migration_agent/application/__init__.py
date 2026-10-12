@@ -8,6 +8,7 @@ from migration_agent.application.diagnostics import (
     StructuredDiagnostic,
     parse_diagnostics,
 )
+from migration_agent.application.doctor import collect_diagnostics
 from migration_agent.application.evaluation import EvaluationService
 from migration_agent.application.fullstack_service import (
     CrossDomainLinker,
@@ -34,6 +35,10 @@ from migration_agent.application.specialists import (
     DeterministicPlanCriticAggregator,
     DeterministicRepairDiagnosticianAggregator,
     SpecialistCoordinator,
+)
+from migration_agent.application.stack_service import (
+    StackAnalysisService,
+    StackRecommendationService,
 )
 from migration_agent.application.transformation import TransformationService
 from migration_agent.application.validation import (
@@ -72,9 +77,12 @@ __all__ = [
     "SnapshotFileReader",
     "SpecTestBedRepairStrategy",
     "SpecialistCoordinator",
+    "StackAnalysisService",
+    "StackRecommendationService",
     "StructuredDiagnostic",
     "SyntaxLintRepairStrategy",
     "TransformationService",
     "ValidationService",
+    "collect_diagnostics",
     "parse_diagnostics",
 ]

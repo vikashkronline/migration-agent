@@ -3,11 +3,13 @@
 import json
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from migration_agent.cli import app
 
 runner = CliRunner()
+pytestmark = pytest.mark.usefixtures("cli_workflow_authorization")
 
 
 def test_cli_plan_lifecycle_with_fake_runtime(tmp_path: Path) -> None:

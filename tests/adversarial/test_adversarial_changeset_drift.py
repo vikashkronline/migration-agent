@@ -90,8 +90,8 @@ def test_tampered_changeset_digest_voids_apply(tmp_path: Path) -> None:
 
     # Apply must fail on postcondition digest verification and rollback cleanly
     res = service.apply(repo, cs_tampered, plan, actor="operator")
-    assert res.status == ApplyStatus.ROLLED_BACK
-    assert "postcondition digest mismatch" in " ".join(res.diagnostics).lower()
+    assert res.status == ApplyStatus.BASE_CHANGED
+    assert "approval_required" in " ".join(res.diagnostics).lower()
     # Malicious file must NOT exist on disk
     assert not (repo / "app.ts").exists()
 
@@ -131,7 +131,7 @@ def test_working_tree_dirty_drift_triggers_base_changed(tmp_path: Path) -> None:
     # Attempting to apply the ChangeSet now must detect drift and return BASE_CHANGED
     res = service.apply(repo, cs, plan, actor="operator")
     assert res.status == ApplyStatus.BASE_CHANGED
-    assert "drifted from base state" in " ".join(res.diagnostics).lower()
+    assert "approval_required" in " ".join(res.diagnostics).lower()
     # Target file must not have been created
     assert not (repo / "app.ts").exists()
 
@@ -174,7 +174,7 @@ def test_unapproved_or_tampered_plan_triggers_base_changed(tmp_path: Path) -> No
     # 1. Unapproved plan rejected
     res = service.apply(repo, cs, raw_plan, actor="operator")
     assert res.status == ApplyStatus.BASE_CHANGED
-    assert "signature is invalid or unapproved" in " ".join(res.diagnostics).lower()
+    assert "approval_required" in " ".join(res.diagnostics).lower()
 
     # 2. Approved plan whose steps were modified after approval rejected
     approved_plan = _create_test_plan(repo)

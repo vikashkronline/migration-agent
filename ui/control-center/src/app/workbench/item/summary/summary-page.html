@@ -1,0 +1,196 @@
+@if (store.detail(); as detail) { @if (detail.node.kind === 'reference') {
+<pre class="small">{{detail.summary}}</pre>
+<cc-diagram-preview [source]="detail.diagram" [context]="detail.revision + detail.node.node_id" />}
+@else {
+<p>{{detail.summary}}</p>
+} @if (detail.provenance) {
+<p class="small text-body-secondary">{{detail.provenance}}</p>
+} @if (detail.owner) {
+<p class="small"><strong>Owner:</strong> {{detail.owner}}</p>
+} @if (detail.acceptance?.length) {
+<h2 class="h6">Acceptance criteria</h2>
+<ul>
+  @for (criterion of detail.acceptance; track $index) {
+  <li>{{criterion}}</li>
+  }
+</ul>
+} @if (detail.node.kind === 'task') {
+<section class="card mb-3">
+  <div class="card-body">
+    <h2 class="h6">Run and readiness</h2>
+    <p class="small text-break">
+      Run: {{detail.run_id ?? 'Not started'}} · Artifact: {{detail.changeset_id ?? 'Not staged'}}
+    </p>
+    @if (unappliedDependencies().length > 0) {
+    <div class="alert alert-warning py-2 px-3 mb-3">
+      <strong>Prerequisites not applied:</strong>
+      This task depends on unapplied prerequisite tasks. All prerequisites must be completed and
+      applied before downstream validation and apply.
+    </div>
+    }
+    <h3 class="h6">Declared dependencies</h3>
+    <div class="d-flex flex-wrap gap-2">
+      @for (dependency of detail.node.dependencies; track dependency) { @if (store.node(dependency);
+      as depNode) {
+      <a
+        class="btn btn-sm"
+        [class.btn-outline-success]="depNode.status === 'APPLY_COMPLETED'"
+        [class.btn-outline-danger]="depNode.status === 'VALIDATION_FAILED' || depNode.status === 'RECOVERY_REQUIRED'"
+        [class.btn-outline-warning]="depNode.status !== 'APPLY_COMPLETED' && depNode.status !== 'VALIDATION_FAILED' && depNode.status !== 'RECOVERY_REQUIRED'"
+        [routerLink]="['/projects', detail.project_id, 'items', dependency]"
+      >
+        {{depNode.label}}
+        <span
+          class="badge ms-1"
+          [class.text-bg-success]="depNode.status === 'APPLY_COMPLETED'"
+          [class.text-bg-danger]="depNode.status === 'VALIDATION_FAILED' || depNode.status === 'RECOVERY_REQUIRED'"
+          [class.text-bg-warning]="depNode.status !== 'APPLY_COMPLETED' && depNode.status !== 'VALIDATION_FAILED' && depNode.status !== 'RECOVERY_REQUIRED'"
+          >{{depNode.status === 'APPLY_COMPLETED' ? 'Applied' : depNode.status}}</span
+        >
+      </a>
+      } @else {
+      <a
+        class="btn btn-sm btn-outline-secondary"
+        [routerLink]="['/projects', detail.project_id, 'items', dependency]"
+      >
+        {{store.label(dependency)}}
+      </a>
+      } } @empty {
+      <p class="small">No dependencies declared.</p>
+      }
+    </div>
+    <p class="small text-body-secondary mt-2 mb-0">
+      Planning relationships explain scope. Execution uses the workflow's authoritative dependencies
+      and policy.
+    </p>
+  </div>
+</section>
+} @else { @if (nextRecommendedTask(); as rec) {
+<section
+  class="card mb-3 border-start border-4"
+  [class.border-info]="rec.type === 'architecture'"
+  [class.border-warning]="rec.type === 'foundation' || rec.type === 'prerequisite'"
+  [class.border-danger]="rec.type === 'attention'"
+  [class.border-primary]="rec.type === 'next'"
+>
+  <div class="card-body py-2 px-3">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+      <div>
+        <span
+          class="badge d-inline-flex align-items-center gap-1"
+          [class.text-bg-info]="rec.type === 'architecture'"
+          [class.text-bg-warning]="rec.type === 'foundation' || rec.type === 'prerequisite'"
+          [class.text-bg-danger]="rec.type === 'attention'"
+          [class.text-bg-primary]="rec.type === 'next'"
+        >
+          <cc-icon [name]="rec.icon" size="0.85em" />
+          <span>{{ rec.badgeLabel }}</span>
+        </span>
+        <strong class="ms-2">{{ rec.targetLabel }}</strong>
+        <p class="small text-body-secondary mb-0 mt-1">{{ rec.message }}</p>
+      </div>
+      <a
+        class="btn btn-sm d-inline-flex align-items-center gap-1"
+        [class.btn-outline-info]="rec.type === 'architecture'"
+        [class.btn-outline-warning]="rec.type === 'foundation' || rec.type === 'prerequisite'"
+        [class.btn-outline-danger]="rec.type === 'attention'"
+        [class.btn-primary]="rec.type === 'next'"
+        [routerLink]="rec.targetRoute ?? ['/projects', detail.project_id, 'items', rec.targetNodeId]"
+      >
+        <span>{{ rec.actionLabel }}</span>
+        <cc-icon name="arrow-right" size="0.85em" />
+      </a>
+    </div>
+  </div>
+</section>
+}
+<section class="card mb-3">
+  <div class="card-body">
+    <h2 class="h6">Recorded task completion</h2>
+    @if (detail.node.task_count) {
+    <p>
+      {{detail.node.complete_count}} of {{detail.node.task_count}} recorded tasks have verified
+      completion evidence.
+    </p>
+    <progress
+      class="w-100"
+      [max]="detail.node.task_count"
+      [value]="detail.node.complete_count"
+      aria-label="Recorded task completion"
+    ></progress
+    >} @else { @if (detail.node.node_id === 'project') {
+    <div class="alert alert-info py-2 px-3 mb-2">
+      <strong>Project opened; no migration plan saved.</strong>
+      <p class="small mb-1">To start migration, proceed with discovery, analysis, and planning:</p>
+      <ol class="small mb-2 ps-3">
+        <li>
+          <strong>Discovery:</strong> Run
+          <code>agent inventory &lt;source&gt; --output reports/inventory</code> to assess framework
+          evidence and file inventory.
+        </li>
+        <li>
+          <strong>Analysis:</strong> Run
+          <code>agent analyze &lt;source&gt; --provider gemini --model gemini-2.5-pro</code> or use
+          host MCP tools to identify migration patterns.
+        </li>
+        <li>
+          <strong>Planning:</strong> Run <code>agent plan create &lt;source&gt;</code> to generate a
+          verified, topologically sorted migration plan with execution steps.
+        </li>
+      </ol>
+      <p class="small mb-0 text-body-secondary">
+        Saved plans and workflow execution records in this store appear automatically in the
+        workbench.
+      </p>
+    </div>
+    }
+    <p>No recorded task scope; completion is unconfirmed.</p>
+    }
+    <p class="small text-body-secondary mb-0">
+      Unknown readiness is not counted as ready. Declared status is separate from verified workflow
+      evidence.
+    </p>
+  </div>
+</section>
+<div class="row g-3">
+  @for (child of cards(); track child.node_id) {
+  <div class="col-12 col-lg-6">
+    <section class="card h-100">
+      <div class="card-body">
+        <div class="d-flex align-items-start justify-content-between gap-2 mb-2">
+          <a
+            class="h6 d-inline-flex align-items-center gap-2 text-break mb-0"
+            [routerLink]="['/projects', detail.project_id, 'items', child.node_id]"
+          >
+            <cc-icon [name]="getNodeIcon(child)" size="1em" />
+            <span>{{child.label}}</span>
+          </a>
+          <cc-status-badge
+            [status]="child.status"
+            [tone]="child.status_tone ?? 'neutral'"
+            [kind]="child.kind"
+            [taskCount]="child.task_count"
+          />
+        </div>
+        @if (child.task_count) {
+        <p class="small text-body-secondary mb-0">
+          {{child.complete_count}} / {{child.task_count}} recorded tasks verified
+        </p>
+        } @else if (child.kind === 'group' && child.node_id === 'foundation') {
+        <p class="small text-body-secondary mb-0">0 recorded tasks · Baseline platform readiness</p>
+        } @else if (child.kind === 'group' && child.node_id === 'knowledge') {
+        <p class="small text-body-secondary mb-0">
+          {{child.child_count}} observed documentation reference{{child.child_count === 1 ? '' :
+          's'}}
+        </p>
+        } @else {
+        <p class="small text-body-secondary mb-0">
+          {{child.child_count}} item{{child.child_count === 1 ? '' : 's'}}
+        </p>
+        }
+      </div>
+    </section>
+  </div>
+  }
+</div>
+} }

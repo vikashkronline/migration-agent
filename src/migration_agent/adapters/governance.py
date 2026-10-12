@@ -3,8 +3,10 @@
 import json
 from pathlib import Path
 
+from migration_agent.adapters.filesystem import read_repository_text, validate_repository_path
 from migration_agent.domain import MigrationPlan, compute_canonical_digest
 from migration_agent.ports import GovernancePort, ProjectManifest, ProjectPolicy
+from migration_agent.ports.governance import MigrationSession
 
 
 class GitGovernanceAdapter(GovernancePort):
@@ -85,20 +87,34 @@ class GitGovernanceAdapter(GovernancePort):
 
     def get_manifest(self, project_root: str) -> ProjectManifest | None:
         """Load platform project manifest from .agent/manifest.json."""
-        agent_dir = self._resolve_agent_dir(project_root)
-        manifest_file = agent_dir / "manifest.json"
+        manifest_file = validate_repository_path(Path(project_root), ".agent/manifest.json")
         if not manifest_file.exists():
             return None
-        content = manifest_file.read_text(encoding="utf-8")
+        content = read_repository_text(Path(project_root), ".agent/manifest.json")
         return ProjectManifest.model_validate_json(content)
 
+    def save_migration_session(self, session: MigrationSession) -> None:
+        session.project_root.mkdir(parents=True, exist_ok=True)
+        target = validate_repository_path(session.project_root, ".agent/migration-session.json")
+        if target.exists():
+            existing = MigrationSession.model_validate_json(
+                read_repository_text(session.project_root, ".agent/migration-session.json")
+            )
+            if existing != session:
+                raise ValueError(
+                    "SESSION_CONFLICT: use a fresh project directory for different roots."
+                )
+            return
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with target.open("x", encoding="utf-8", newline="\n") as stream:
+            stream.write(session.model_dump_json(indent=2) + "\n")
+
     def get_policy(self, project_root: str) -> ProjectPolicy:
-        """Load project safety policy from .agent/policy.json, creating default if absent."""
-        agent_dir = self._resolve_agent_dir(project_root)
-        policy_file = agent_dir / "policy.json"
+        """Read project policy without creating governance files in the source."""
+        policy_file = validate_repository_path(Path(project_root), ".agent/policy.json")
         if not policy_file.exists():
-            self.ensure_governance_layout(project_root)
-        content = policy_file.read_text(encoding="utf-8")
+            return ProjectPolicy()
+        content = read_repository_text(Path(project_root), ".agent/policy.json")
         return ProjectPolicy.model_validate_json(content)
 
     def get_policy_digest(self, project_root: str) -> str:
@@ -118,9 +134,11 @@ class GitGovernanceAdapter(GovernancePort):
 
     def load_plan(self, project_root: str, plan_id: str) -> MigrationPlan | None:
         """Load an exported migration plan from .agent/plans/<plan_id>.json."""
-        agent_dir = self._resolve_agent_dir(project_root)
-        target_file = agent_dir / "plans" / f"{plan_id}.json"
+        if not plan_id or any(c in plan_id for c in ("..", "/", "\\", "\x00", ":")):
+            raise ValueError("INVALID_PLAN_ID: invalid plan identifier.")
+        relative_path = f".agent/plans/{plan_id}.json"
+        target_file = validate_repository_path(Path(project_root), relative_path)
         if not target_file.exists():
             return None
-        content = target_file.read_text(encoding="utf-8")
+        content = read_repository_text(Path(project_root), relative_path)
         return MigrationPlan.model_validate_json(content)

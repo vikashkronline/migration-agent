@@ -1,0 +1,142 @@
+<section aria-label="Read-only code review" class="mb-4">
+  <h2 class="h6">Read-only diff</h2>
+  <p class="small text-body-secondary text-break">
+    Base: {{detail().base_revision ?? 'HEAD'}} · Artifact: {{detail().changeset_digest ?? 'None'}}.
+    Viewing a diff does not record approval.
+  </p>
+  <label class="form-label w-100 small"
+    >Find a changed file<input
+      #query
+      type="search"
+      class="form-control form-control-sm mt-1"
+      maxlength="256"
+      [value]="search()"
+      (input)="search.set(query.value)"
+  /></label>
+  <nav aria-label="Changed files" class="d-flex flex-wrap gap-2 mb-3">
+    @for (file of files(); track file.index) {<button
+      class="btn btn-sm text-break"
+      [class.btn-primary]="index() === file.index"
+      [class.btn-outline-secondary]="index() !== file.index"
+      [attr.aria-pressed]="index() === file.index"
+      (click)="index.set(file.index)"
+    >
+      {{file.path}}</button
+    >} @empty {
+    <p class="small">No matching changed files.</p>
+    }
+  </nav>
+  <div class="d-flex flex-wrap gap-2 mb-3" role="group" aria-label="Diff layout">
+    <button
+      type="button"
+      class="btn btn-sm btn-outline-secondary"
+      [attr.aria-pressed]="!split()"
+      (click)="mode.set('unified')"
+    >
+      Unified view
+    </button>
+    <button
+      type="button"
+      class="btn btn-sm btn-outline-secondary"
+      [attr.aria-pressed]="split()"
+      [disabled]="compact()"
+      (click)="mode.set('split')"
+    >
+      Split view
+    </button>
+    <button
+      type="button"
+      class="btn btn-sm"
+      [class.btn-secondary]="showLineEndings()"
+      [class.btn-outline-secondary]="!showLineEndings()"
+      [attr.aria-pressed]="showLineEndings()"
+      (click)="showLineEndings.set(!showLineEndings())"
+    >
+      {{ showLineEndings() ? 'Hide line endings' : 'Show line endings' }}
+    </button>
+  </div>
+  @if (compact()) {
+  <p class="small text-body-secondary">Unified view keeps the diff readable at this width.</p>
+  } @if (loading()) {
+  <p role="status">Loading exact file diff…</p>
+  } @if (error()) {<cc-feedback
+    title="Diff unavailable"
+    [message]="error()"
+    retryLabel="Retry diff"
+    (retry)="retry()"
+  />} @if (content(); as diff) {
+  <h3 class="h6 text-break">{{diff.operation}} {{diff.path}} · mode {{diff.file_mode}}</h3>
+  @if (!diff.available) {<cc-feedback title="Preview unavailable" [message]="diff.reason" />} @else
+  {
+  <p class="small">
+    − Removed · + Added · unchanged context. Line endings are preserved; non-standard endings
+    ([CRLF], unterminated) are highlighted.
+  </p>
+  @for (hunk of hunks(); track $index) {
+  <p class="small bg-body-tertiary p-2 mb-0 font-monospace">
+    @@ −{{hunk.old_start}},{{hunk.old_count}} +{{hunk.new_start}},{{hunk.new_count}} @@
+  </p>
+  <div
+    class="diff-table mb-3"
+    [class.split]="split()"
+    role="region"
+    aria-label="File diff hunk"
+    tabindex="0"
+  >
+    <table>
+      <caption class="visually-hidden">
+        {{diff.path}}: {{split() ? 'Base and proposal side by side' : 'Unified base and proposal
+        changes'}}
+      </caption>
+      <thead>
+        <tr>
+          @if (split()) {
+          <th scope="col">Base line</th>
+          <th scope="col">Base</th>
+          <th scope="col">New line</th>
+          <th scope="col">Proposal</th>
+          } @else {
+          <th scope="col">Base</th>
+          <th scope="col">New</th>
+          <th scope="col" aria-label="Change">+/−</th>
+          <th scope="col">Code</th>
+          }
+        </tr>
+      </thead>
+      <tbody>
+        @if (split()) { @for (row of hunk.rows; track $index) {
+        <tr>
+          <td class="number">{{row.old?.old_line ?? ''}}</td>
+          <td [class.removed]="row.old?.kind === 'remove'">
+            <span class="visually-hidden">{{row.old?.kind === 'remove' ? 'Removed: ' : ''}}</span
+            ><cc-code-line [text]="row.old?.text ?? ''" [showEnding]="showLineEndings()" />@if
+            (row.old && !row.old.text.endsWith('\n')) {<span class="newline">No final newline</span
+            >}
+          </td>
+          <td class="number">{{row.next?.new_line ?? ''}}</td>
+          <td [class.added]="row.next?.kind === 'add'">
+            <span class="visually-hidden">{{row.next?.kind === 'add' ? 'Added: ' : ''}}</span
+            ><cc-code-line [text]="row.next?.text ?? ''" [showEnding]="showLineEndings()" />@if
+            (row.next && !row.next.text.endsWith('\n')) {<span class="newline"
+              >No final newline</span
+            >}
+          </td>
+        </tr>
+        } } @else { @for (line of hunk.lines; track $index) {
+        <tr [class.removed]="line.kind === 'remove'" [class.added]="line.kind === 'add'">
+          <td class="number">{{line.old_line ?? ''}}</td>
+          <td class="number">{{line.new_line ?? ''}}</td>
+          <td class="number">{{line.kind === 'remove' ? '−' : line.kind === 'add' ? '+' : ' '}}</td>
+          <td>
+            <cc-code-line [text]="line.text" [showEnding]="showLineEndings()" />@if
+            (!line.text.endsWith('\n')) {<span class="newline">No final newline</span>}
+          </td>
+        </tr>
+        } }
+      </tbody>
+    </table>
+  </div>
+  } @empty {
+  <p>No textual changes. Check the operation and recorded file mode above.</p>
+  } } }
+</section>

@@ -1,0 +1,9 @@
+.F.....                                                                  [100%]
+================================== FAILURES ===================================
+____ test_execution_consent_revocation_invalidates_recorded_apply_approval ____
+tests\unit\test_native_validation.py:622: in test_execution_consent_revocation_invalidates_recorded_apply_approval
+    with pytest.raises(ValueError, match="NATIVE_CONSENT_REQUIRED"):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE ValueError
+=========================== short test summary info ===========================
+FAILED tests/unit/test_native_validation.py::test_execution_consent_revocation_invalidates_recorded_apply_approval

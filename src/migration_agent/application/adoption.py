@@ -6,7 +6,7 @@ from pathlib import Path
 
 from migration_agent.application.fullstack_service import FullStackDiscoveryService
 from migration_agent.application.inventory import InventoryService
-from migration_agent.ports.governance import GovernancePort, ProjectManifest
+from migration_agent.ports.governance import GovernancePort, MigrationSession, ProjectManifest
 
 
 @dataclass(frozen=True)
@@ -46,6 +46,36 @@ class ProjectAdoptionService:
         if manifest is None:
             raise RuntimeError(f"Failed to initialize project manifest at '{resolved}'.")
         return manifest
+
+    def init_migration(
+        self,
+        project_root: Path,
+        source_root: Path,
+        staging_root: Path,
+        state_dir: Path,
+        project_id: str | None = None,
+    ) -> tuple[ProjectManifest, MigrationSession]:
+        """Initialize external governance without writing to the selected source."""
+        source = source_root.resolve(strict=True)
+        if not source.is_dir():
+            raise ValueError("INVALID_SOURCE: source must be an existing directory.")
+        session = MigrationSession(
+            source_root=source,
+            project_root=project_root.resolve(),
+            staging_root=staging_root.resolve(),
+            state_dir=state_dir.resolve(),
+        )
+        roots = (session.source_root, session.project_root, session.staging_root, session.state_dir)
+        for index, left in enumerate(roots):
+            for right in roots[index + 1 :]:
+                if left.is_relative_to(right) or right.is_relative_to(left):
+                    raise ValueError(
+                        "UNSAFE_PATHS: source, project, staging and state must be disjoint."
+                    )
+        # Persist the binding before layout creation so conflicts cause no governance changes.
+        self._governance.save_migration_session(session)
+        manifest = self.init(session.project_root, project_id)
+        return manifest, session
 
     def adopt(
         self,

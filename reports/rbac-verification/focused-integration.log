@@ -1,0 +1,215 @@
+.........................................FFFFFF
+================================== FAILURES ===================================
+_ test_legacy_live_entry_points_cannot_bypass_execution_consent[validate-restricted] _
+
+tmp_path = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-745/test_legacy_live_entry_points_0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000024DA319B5F0>
+mode = 'restricted', entry = 'validate'
+
+    @pytest.mark.parametrize("mode", ["restricted", "native", "container"])
+    @pytest.mark.parametrize("entry", ["validate", "run", "resume"])
+    def test_legacy_live_entry_points_cannot_bypass_execution_consent(
+        tmp_path, monkeypatch, mode, entry
+    ):
+        from typer.testing import CliRunner
+    
+        from migration_agent.cli import app
+    
+        monkeypatch.setenv("AGENT_VALIDATION_MODE", mode)
+        monkeypatch.setattr(
+            "migration_agent.adapters.command_runner.SubprocessCommandRunner.run_command",
+            lambda *args: pytest.fail("unapproved legacy execution"),
+        )
+        args = (
+            ["validate", str(tmp_path)]
+            if entry == "validate"
+            else ["run", str(tmp_path), "--plan", "fixture"]
+            if entry == "run"
+            else ["run", "resume", "unknown"]
+        )
+        result = CliRunner().invoke(app, args)
+        assert result.exit_code == 2
+>       assert "STAGED_WORKFLOW_REQUIRED" in result.output
+E       assert 'STAGED_WORKFLOW_REQUIRED' in '{"status": "blocked", "error": "ACCESS_BOOTSTRAP_REQUIRED: enroll the governance project owner."}\n'
+E        +  where '{"status": "blocked", "error": "ACCESS_BOOTSTRAP_REQUIRED: enroll the governance project owner."}\n' = <Result SystemExit(2)>.output
+
+tests\unit\test_native_validation.py:137: AssertionError
+_ test_legacy_live_entry_points_cannot_bypass_execution_consent[validate-native] _
+
+tmp_path = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-745/test_legacy_live_entry_points_1')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000024DA319A690>
+mode = 'native', entry = 'validate'
+
+    @pytest.mark.parametrize("mode", ["restricted", "native", "container"])
+    @pytest.mark.parametrize("entry", ["validate", "run", "resume"])
+    def test_legacy_live_entry_points_cannot_bypass_execution_consent(
+        tmp_path, monkeypatch, mode, entry
+    ):
+        from typer.testing import CliRunner
+    
+        from migration_agent.cli import app
+    
+        monkeypatch.setenv("AGENT_VALIDATION_MODE", mode)
+        monkeypatch.setattr(
+            "migration_agent.adapters.command_runner.SubprocessCommandRunner.run_command",
+            lambda *args: pytest.fail("unapproved legacy execution"),
+        )
+        args = (
+            ["validate", str(tmp_path)]
+            if entry == "validate"
+            else ["run", str(tmp_path), "--plan", "fixture"]
+            if entry == "run"
+            else ["run", "resume", "unknown"]
+        )
+        result = CliRunner().invoke(app, args)
+        assert result.exit_code == 2
+>       assert "STAGED_WORKFLOW_REQUIRED" in result.output
+E       assert 'STAGED_WORKFLOW_REQUIRED' in '{"status": "blocked", "error": "ACCESS_BOOTSTRAP_REQUIRED: enroll the governance project owner."}\n'
+E        +  where '{"status": "blocked", "error": "ACCESS_BOOTSTRAP_REQUIRED: enroll the governance project owner."}\n' = <Result SystemExit(2)>.output
+
+tests\unit\test_native_validation.py:137: AssertionError
+_ test_legacy_live_entry_points_cannot_bypass_execution_consent[validate-container] _
+
+tmp_path = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-745/test_legacy_live_entry_points_2')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000024DA2D832C0>
+mode = 'container', entry = 'validate'
+
+    @pytest.mark.parametrize("mode", ["restricted", "native", "container"])
+    @pytest.mark.parametrize("entry", ["validate", "run", "resume"])
+    def test_legacy_live_entry_points_cannot_bypass_execution_consent(
+        tmp_path, monkeypatch, mode, entry
+    ):
+        from typer.testing import CliRunner
+    
+        from migration_agent.cli import app
+    
+        monkeypatch.setenv("AGENT_VALIDATION_MODE", mode)
+        monkeypatch.setattr(
+            "migration_agent.adapters.command_runner.SubprocessCommandRunner.run_command",
+            lambda *args: pytest.fail("unapproved legacy execution"),
+        )
+        args = (
+            ["validate", str(tmp_path)]
+            if entry == "validate"
+            else ["run", str(tmp_path), "--plan", "fixture"]
+            if entry == "run"
+            else ["run", "resume", "unknown"]
+        )
+        result = CliRunner().invoke(app, args)
+        assert result.exit_code == 2
+>       assert "STAGED_WORKFLOW_REQUIRED" in result.output
+E       assert 'STAGED_WORKFLOW_REQUIRED' in '{"status": "blocked", "error": "ACCESS_BOOTSTRAP_REQUIRED: enroll the governance project owner."}\n'
+E        +  where '{"status": "blocked", "error": "ACCESS_BOOTSTRAP_REQUIRED: enroll the governance project owner."}\n' = <Result SystemExit(2)>.output
+
+tests\unit\test_native_validation.py:137: AssertionError
+_ test_legacy_live_entry_points_cannot_bypass_execution_consent[run-restricted] _
+
+tmp_path = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-745/test_legacy_live_entry_points_3')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000024DA31B78F0>
+mode = 'restricted', entry = 'run'
+
+    @pytest.mark.parametrize("mode", ["restricted", "native", "container"])
+    @pytest.mark.parametrize("entry", ["validate", "run", "resume"])
+    def test_legacy_live_entry_points_cannot_bypass_execution_consent(
+        tmp_path, monkeypatch, mode, entry
+    ):
+        from typer.testing import CliRunner
+    
+        from migration_agent.cli import app
+    
+        monkeypatch.setenv("AGENT_VALIDATION_MODE", mode)
+        monkeypatch.setattr(
+            "migration_agent.adapters.command_runner.SubprocessCommandRunner.run_command",
+            lambda *args: pytest.fail("unapproved legacy execution"),
+        )
+        args = (
+            ["validate", str(tmp_path)]
+            if entry == "validate"
+            else ["run", str(tmp_path), "--plan", "fixture"]
+            if entry == "run"
+            else ["run", "resume", "unknown"]
+        )
+        result = CliRunner().invoke(app, args)
+        assert result.exit_code == 2
+>       assert "STAGED_WORKFLOW_REQUIRED" in result.output
+E       assert 'STAGED_WORKFLOW_REQUIRED' in '{"status": "blocked", "error": "ACCESS_BOOTSTRAP_REQUIRED: enroll the governance project owner."}\n'
+E        +  where '{"status": "blocked", "error": "ACCESS_BOOTSTRAP_REQUIRED: enroll the governance project owner."}\n' = <Result SystemExit(2)>.output
+
+tests\unit\test_native_validation.py:137: AssertionError
+__ test_legacy_live_entry_points_cannot_bypass_execution_consent[run-native] __
+
+tmp_path = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-745/test_legacy_live_entry_points_4')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000024DA2D98D10>
+mode = 'native', entry = 'run'
+
+    @pytest.mark.parametrize("mode", ["restricted", "native", "container"])
+    @pytest.mark.parametrize("entry", ["validate", "run", "resume"])
+    def test_legacy_live_entry_points_cannot_bypass_execution_consent(
+        tmp_path, monkeypatch, mode, entry
+    ):
+        from typer.testing import CliRunner
+    
+        from migration_agent.cli import app
+    
+        monkeypatch.setenv("AGENT_VALIDATION_MODE", mode)
+        monkeypatch.setattr(
+            "migration_agent.adapters.command_runner.SubprocessCommandRunner.run_command",
+            lambda *args: pytest.fail("unapproved legacy execution"),
+        )
+        args = (
+            ["validate", str(tmp_path)]
+            if entry == "validate"
+            else ["run", str(tmp_path), "--plan", "fixture"]
+            if entry == "run"
+            else ["run", "resume", "unknown"]
+        )
+        result = CliRunner().invoke(app, args)
+        assert result.exit_code == 2
+>       assert "STAGED_WORKFLOW_REQUIRED" in result.output
+E       assert 'STAGED_WORKFLOW_REQUIRED' in '{"status": "blocked", "error": "ACCESS_BOOTSTRAP_REQUIRED: enroll the governance project owner."}\n'
+E        +  where '{"status": "blocked", "error": "ACCESS_BOOTSTRAP_REQUIRED: enroll the governance project owner."}\n' = <Result SystemExit(2)>.output
+
+tests\unit\test_native_validation.py:137: AssertionError
+_ test_legacy_live_entry_points_cannot_bypass_execution_consent[run-container] _
+
+tmp_path = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-745/test_legacy_live_entry_points_5')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000024DA2B65A90>
+mode = 'container', entry = 'run'
+
+    @pytest.mark.parametrize("mode", ["restricted", "native", "container"])
+    @pytest.mark.parametrize("entry", ["validate", "run", "resume"])
+    def test_legacy_live_entry_points_cannot_bypass_execution_consent(
+        tmp_path, monkeypatch, mode, entry
+    ):
+        from typer.testing import CliRunner
+    
+        from migration_agent.cli import app
+    
+        monkeypatch.setenv("AGENT_VALIDATION_MODE", mode)
+        monkeypatch.setattr(
+            "migration_agent.adapters.command_runner.SubprocessCommandRunner.run_command",
+            lambda *args: pytest.fail("unapproved legacy execution"),
+        )
+        args = (
+            ["validate", str(tmp_path)]
+            if entry == "validate"
+            else ["run", str(tmp_path), "--plan", "fixture"]
+            if entry == "run"
+            else ["run", "resume", "unknown"]
+        )
+        result = CliRunner().invoke(app, args)
+        assert result.exit_code == 2
+>       assert "STAGED_WORKFLOW_REQUIRED" in result.output
+E       assert 'STAGED_WORKFLOW_REQUIRED' in '{"status": "blocked", "error": "ACCESS_BOOTSTRAP_REQUIRED: enroll the governance project owner."}\n'
+E        +  where '{"status": "blocked", "error": "ACCESS_BOOTSTRAP_REQUIRED: enroll the governance project owner."}\n' = <Result SystemExit(2)>.output
+
+tests\unit\test_native_validation.py:137: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/unit/test_native_validation.py::test_legacy_live_entry_points_cannot_bypass_execution_consent[validate-restricted]
+FAILED tests/unit/test_native_validation.py::test_legacy_live_entry_points_cannot_bypass_execution_consent[validate-native]
+FAILED tests/unit/test_native_validation.py::test_legacy_live_entry_points_cannot_bypass_execution_consent[validate-container]
+FAILED tests/unit/test_native_validation.py::test_legacy_live_entry_points_cannot_bypass_execution_consent[run-restricted]
+FAILED tests/unit/test_native_validation.py::test_legacy_live_entry_points_cannot_bypass_execution_consent[run-native]
+FAILED tests/unit/test_native_validation.py::test_legacy_live_entry_points_cannot_bypass_execution_consent[run-container]
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 6 failures !!!!!!!!!!!!!!!!!!!!!!!!!!
+6 failed, 41 passed in 142.48s (0:02:22)

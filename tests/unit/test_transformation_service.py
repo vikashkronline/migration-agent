@@ -147,7 +147,7 @@ def test_stage_materializes_changes_in_isolated_staging(tmp_path: Path) -> None:
     assert "CHANGESET_STAGED" in events
 
 
-def test_apply_success_with_backup_and_postconditions(tmp_path: Path) -> None:
+def test_legacy_apply_cannot_bypass_shared_gate(tmp_path: Path) -> None:
     repo = _setup_fixture_repo(tmp_path)
     plan = _approved_plan(repo)
     state_dir = tmp_path / "state"
@@ -171,9 +171,9 @@ def test_apply_success_with_backup_and_postconditions(tmp_path: Path) -> None:
     )
 
     target_ts = "src/app/components/user-card/user-card.component.ts"
-    assert result.status == ApplyStatus.APPLIED
-    assert len(result.applied_paths) == 4
-    assert (repo / target_ts).exists()
+    assert result.status == ApplyStatus.BASE_CHANGED
+    assert not result.applied_paths
+    assert not (repo / target_ts).exists()
 
 
 def test_apply_drift_aborts_with_base_changed(tmp_path: Path) -> None:
@@ -201,12 +201,12 @@ def test_apply_drift_aborts_with_base_changed(tmp_path: Path) -> None:
 
     target_ts = "src/app/components/user-card/user-card.component.ts"
     assert result.status == ApplyStatus.BASE_CHANGED
-    assert "drifted" in result.diagnostics[0]
+    assert "APPROVAL_REQUIRED" in result.diagnostics[0]
     # Generated files must NOT exist
     assert not (repo / target_ts).exists()
 
 
-def test_apply_verified_rollback_on_failure(tmp_path: Path) -> None:
+def test_legacy_simulation_cannot_bypass_shared_gate(tmp_path: Path) -> None:
     repo = _setup_fixture_repo(tmp_path)
     plan = _approved_plan(repo)
 
@@ -227,13 +227,13 @@ def test_apply_verified_rollback_on_failure(tmp_path: Path) -> None:
     )
 
     target_ts = "src/app/components/user-card/user-card.component.ts"
-    assert result.status == ApplyStatus.ROLLED_BACK
-    assert "Rollback cleanly executed and verified" in result.diagnostics[0]
+    assert result.status == ApplyStatus.BASE_CHANGED
+    assert "APPROVAL_REQUIRED" in result.diagnostics[0]
     # No partial files left behind
     assert not (repo / target_ts).exists()
 
 
-def test_apply_double_fault_transitions_to_recovery_required(tmp_path: Path) -> None:
+def test_legacy_double_simulation_cannot_authorize_apply(tmp_path: Path) -> None:
     repo = _setup_fixture_repo(tmp_path)
     plan = _approved_plan(repo)
 
@@ -254,7 +254,6 @@ def test_apply_double_fault_transitions_to_recovery_required(tmp_path: Path) -> 
         simulate_rollback_failure=True,
     )
 
-    assert result.status == ApplyStatus.RECOVERY_REQUIRED
-    assert "RECOVERY_REQUIRED" in result.status.value
-    assert result.recovery_details is not None
-    assert "Simulated failure restoring backup files" in result.recovery_details["rollback_error"]
+    assert result.status == ApplyStatus.BASE_CHANGED
+    assert "APPROVAL_REQUIRED" in result.diagnostics[0]
+    assert result.recovery_details is None

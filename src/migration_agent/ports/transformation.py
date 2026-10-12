@@ -31,6 +31,8 @@ class IntermediateComponent(BaseModel):
     outputs: tuple[str, ...] = Field(default_factory=tuple)
     input_types: dict[str, str] = Field(default_factory=dict)
     state_types: dict[str, str] = Field(default_factory=dict)
+    state_defaults: dict[str, str] = Field(default_factory=dict)
+    method_bodies: dict[str, str] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -43,6 +45,8 @@ class ComponentExtractorPort(Protocol):
         component_source: str,
         template_source: str = "",
         style_source: str = "",
+        *,
+        component_name: str | None = None,
     ) -> IntermediateComponent:
         """Parse source files into an intermediate component representation."""
 
@@ -53,6 +57,9 @@ class ComponentExtractorPort(Protocol):
 @runtime_checkable
 class ComponentRendererPort(Protocol):
     """Boundary for rendering modern target framework components."""
+
+    def output_paths(self, name: str, namespace: str) -> tuple[str, str, str, str]:
+        """Return exact target identities in TypeScript/template/style/spec order."""
 
     def render_component_ts(self, component: IntermediateComponent) -> str:
         """Render modern TypeScript standalone component code."""
@@ -82,8 +89,24 @@ class ServiceExtractorPort(Protocol):
 class ServiceRendererPort(Protocol):
     """Boundary for rendering modern target framework services."""
 
+    def output_paths(self, name: str) -> tuple[str, str]:
+        """Return exact implementation/spec target identities."""
+
     def render_service_ts(self, service: IntermediateService) -> str:
         """Render modern Angular injectable service with inject(HttpClient)."""
 
     def render_spec_ts(self, service: IntermediateService) -> str:
         """Render service unit test spec with HttpTestingController."""
+
+
+@runtime_checkable
+class FoundationTransformationPort(Protocol):
+    """Boundary for rendering modern target foundation manifests and workspace scaffolding."""
+
+    def render_foundation_files(
+        self,
+        project_name: str,
+        preset: Any = None,
+        draft: Any = None,
+    ) -> dict[str, str]:
+        """Generate root workspace manifests and bootstrap template files."""

@@ -19,6 +19,39 @@ def test_detects_ember_classic_with_inventory_backed_evidence() -> None:
     assert {item.path for item in fingerprints[0].evidence} <= inventory_paths
 
 
+def test_detects_ember_pod_feature_component_and_template_layout(tmp_path: Path) -> None:
+    repository = tmp_path / "ember-pod-project"
+    feat_comp_dir = repository / "app" / "features" / "components" / "delai-de-cloture"
+    feat_comp_dir.mkdir(parents=True)
+    (repository / "package.json").write_text(
+        '{"devDependencies":{"ember-cli":"3.8.3","ember-source":"~3.8.0"}}',
+        encoding="utf-8",
+    )
+    (repository / "ember-cli-build.js").write_text(
+        "module.exports = function() {};", encoding="utf-8"
+    )
+    (feat_comp_dir / "component.js").write_text(
+        "import Component from '@ember/component'; export default Component.extend({});",
+        encoding="utf-8",
+    )
+    (feat_comp_dir / "template.hbs").write_text(
+        "<div class='delai'>{{yield}}</div>", encoding="utf-8"
+    )
+
+    snapshot = SafeFilesystemInspector().inspect(repository, InspectionPolicy())
+    registry = FrameworkAdapterRegistry((EmberClassicAdapter(), AngularAdapter()))
+    fingerprints = registry.detect(snapshot)
+
+    assert len(fingerprints) == 1
+    assert fingerprints[0].framework_id == "ember-classic"
+    assert fingerprints[0].confidence == 1.0
+    evidence_kinds = {item.kind for item in fingerprints[0].evidence}
+    assert "pod_component_layout" in evidence_kinds
+    assert "pod_template_layout" in evidence_kinds
+    assert "build_configuration" in evidence_kinds
+    assert "manifest_dependency" in evidence_kinds
+
+
 def test_detects_angular_and_standalone_evidence(tmp_path: Path) -> None:
     repository = tmp_path / "angular-project"
     (repository / "src" / "app").mkdir(parents=True)

@@ -1,0 +1,63 @@
+........................................................................ [ 10%]
+...................................................s.................... [ 21%]
+........................................................................ [ 32%]
+.................................................................s...... [ 42%]
+........................................................................ [ 53%]
+...................................................s.....F.............. [ 64%]
+........................................................................ [ 74%]
+........................................................................ [ 85%]
+........................................................................ [ 96%]
+.........................                                                [100%]
+================================== FAILURES ===================================
+________ test_release_manifest_cryptographic_signing_and_verification _________
+
+tmp_path = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-737/test_release_manifest_cryptogr0')
+
+    def test_release_manifest_cryptographic_signing_and_verification(tmp_path: Path) -> None:
+        dist_dir = tmp_path / "dist"
+        dist_dir.mkdir()
+        asset = dist_dir / "agent-linux-x86_64"
+        asset.write_bytes(b"\x7fELFsynthetic linux elf payload")
+    
+        key_secret = "release-signing-secret-key-32bytes!!"
+        authority_key = AuthorityKey(
+            key_id="release-key-1",
+            public_key=key_secret,
+            fingerprint="sha256:releasekey1fingerprint12345678",
+            created_at="2026-10-02T00:00:00Z",
+            algorithm="ed25519",
+        )
+    
+>       signed_manifest = generate_release_manifest(
+            version="1.0.0",
+            dist_dir=dist_dir,
+            signing_key=key_secret,
+            key_id="release-key-1",
+        )
+
+tests\unit\test_packaging.py:163: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\migration_agent\packaging\release_manifest.py:134: in generate_release_manifest
+    sig = verifier.sign(payload_digest=digest, private_key=signing_key, algorithm=algorithm)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <migration_agent.adapters.trust_store.CryptoSignatureVerifierAdapter object at 0x000002787600D310>
+payload_digest = 'sha256:5cd3fcde277f1694584211699f07e958ee37b87aaf8e9430c210fd4becb21532'
+private_key = 'release-signing-secret-key-32bytes!!', algorithm = 'ed25519'
+
+    def sign(
+        self,
+        payload_digest: str,
+        private_key: str,
+        algorithm: str = "ed25519",
+    ) -> str:
+>       raise SecurityConfigurationError(
+            "LEGACY_MODE_A_DISABLED: use the genuine trusted human approval workflow."
+        )
+E       migration_agent.domain.security.SecurityConfigurationError: LEGACY_MODE_A_DISABLED: use the genuine trusted human approval workflow.
+
+src\migration_agent\adapters\trust_store.py:110: SecurityConfigurationError
+=========================== short test summary info ===========================
+FAILED tests/unit/test_packaging.py::test_release_manifest_cryptographic_signing_and_verification
+1 failed, 669 passed, 3 skipped in 627.65s (0:10:27)

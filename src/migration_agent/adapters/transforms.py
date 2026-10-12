@@ -3,6 +3,8 @@
 import re
 from pathlib import Path
 
+from migration_agent.adapters.ember_syntax import component_semantics, translate_template
+from migration_agent.adapters.filesystem import read_repository_text
 from migration_agent.domain.frameworks import (
     IntermediateService,
     ServiceMethod,
@@ -12,6 +14,7 @@ from migration_agent.domain.frameworks import (
 from migration_agent.ports import (
     ComponentExtractorPort,
     ComponentRendererPort,
+    InspectionPolicy,
     IntermediateComponent,
     ServiceExtractorPort,
     ServiceRendererPort,
@@ -32,46 +35,142 @@ def _to_pascal_case(value: str) -> str:
     return "".join(part[:1].upper() + part[1:] for part in parts if part)
 
 
+def _read_source(root: Path, path: Path) -> str:
+    return read_repository_text(root, path.relative_to(root).as_posix())
+
+
+def _is_discovery_path(root: Path, path: Path) -> bool:
+    ignored = {name.casefold() for name in InspectionPolicy().ignored_directory_names}
+    return not any(part.casefold() in ignored for part in path.relative_to(root).parts[:-1])
+
+
+_JS_RESERVED_KEYWORDS = {
+    "function",
+    "if",
+    "else",
+    "for",
+    "while",
+    "do",
+    "switch",
+    "case",
+    "default",
+    "break",
+    "continue",
+    "return",
+    "try",
+    "catch",
+    "finally",
+    "throw",
+    "class",
+    "const",
+    "let",
+    "var",
+    "import",
+    "export",
+    "from",
+    "as",
+    "new",
+    "this",
+    "super",
+    "typeof",
+    "instanceof",
+    "void",
+    "delete",
+    "in",
+    "of",
+    "with",
+    "yield",
+    "await",
+    "async",
+    "true",
+    "false",
+    "null",
+    "undefined",
+}
+
+
 class EmberClassicComponentExtractor(ComponentExtractorPort):
     """Extracts intermediate component representation from Ember Classic component files."""
 
     def discover_components(self, source_root: Path) -> tuple[SourceComponentBundle, ...]:
-        """Discover Ember Classic components in app/components/ and matching templates."""
+        """Discover Ember components in classic layout or pod/feature layout."""
         root = Path(source_root).resolve()
-        comp_dir = root / "app" / "components"
-        if not comp_dir.is_dir():
-            return ()
+        candidate_dirs = [
+            root / "app" / "components",
+            root / "app" / "features" / "components",
+            root / "app" / "pods" / "components",
+        ]
 
         bundles: list[SourceComponentBundle] = []
-        for js_path in sorted(comp_dir.glob("*.js")):
-            base_name = js_path.stem  # e.g. "user-card"
-            comp_name = _to_pascal_case(base_name)  # e.g. "UserCard"
+        seen_js: set[Path] = set()
 
-            hbs_path = root / "app" / "templates" / "components" / f"{base_name}.hbs"
-            css_path = root / "app" / "styles" / "app.css"
+        for comp_dir in candidate_dirs:
+            if not comp_dir.is_dir():
+                continue
 
-            source_files: list[str] = [str(js_path.relative_to(root)).replace("\\", "/")]
-            template_source = ""
-            style_source = ""
+            for js_path in sorted(comp_dir.rglob("*.js")):
+                if not _is_discovery_path(root, js_path):
+                    continue
+                if js_path.name.endswith(".spec.js") or js_path.name.endswith(".test.js"):
+                    continue
+                if js_path in seen_js:
+                    continue
+                seen_js.add(js_path)
 
-            if hbs_path.is_file():
-                source_files.append(str(hbs_path.relative_to(root)).replace("\\", "/"))
-                template_source = hbs_path.read_text(encoding="utf-8")
+                if js_path.name == "component.js":
+                    base_name = js_path.parent.name
+                    comp_name = _to_pascal_case(base_name)
+                    hbs_path = js_path.parent / "template.hbs"
+                    css_path = js_path.parent / "style.css"
+                    scss_path = js_path.parent / "style.scss"
+                else:
+                    base_name = js_path.stem  # e.g. "user-card"
+                    comp_name = _to_pascal_case(base_name)  # e.g. "UserCard"
+                    hbs_path = js_path.parent / f"{base_name}.hbs"
+                    if not (hbs_path.exists() or hbs_path.is_symlink()):
+                        rel_sub = js_path.relative_to(comp_dir).parent
+                        classic_hbs = (
+                            root / "app" / "templates" / "components" / rel_sub / f"{base_name}.hbs"
+                        )
+                        if classic_hbs.exists() or classic_hbs.is_symlink():
+                            hbs_path = classic_hbs
+                        else:
+                            hbs_path = (
+                                root / "app" / "templates" / "components" / f"{base_name}.hbs"
+                            )
+                    css_path = js_path.parent / f"{base_name}.css"
+                    scss_path = js_path.parent / f"{base_name}.scss"
 
-            if css_path.is_file():
-                source_files.append(str(css_path.relative_to(root)).replace("\\", "/"))
-                style_source = css_path.read_text(encoding="utf-8")
+                source_files: list[str] = [str(js_path.relative_to(root)).replace("\\", "/")]
+                template_source = ""
+                style_source = ""
 
-            component_source = js_path.read_text(encoding="utf-8")
-            bundles.append(
-                SourceComponentBundle(
-                    component_name=comp_name,
-                    source_files=tuple(sorted(source_files)),
-                    component_source=component_source,
-                    template_source=template_source,
-                    style_source=style_source,
+                if hbs_path.exists() or hbs_path.is_symlink():
+                    source_files.append(str(hbs_path.relative_to(root)).replace("\\", "/"))
+                    template_source = _read_source(root, hbs_path)
+
+                if css_path.exists() or css_path.is_symlink():
+                    source_files.append(str(css_path.relative_to(root)).replace("\\", "/"))
+                    style_source = _read_source(root, css_path)
+                elif scss_path.exists() or scss_path.is_symlink():
+                    source_files.append(str(scss_path.relative_to(root)).replace("\\", "/"))
+                    style_source = _read_source(root, scss_path)
+
+                component_source = _read_source(root, js_path)
+                bundles.append(
+                    SourceComponentBundle(
+                        component_name=comp_name,
+                        component_namespace=(
+                            js_path.parent.relative_to(comp_dir).as_posix()
+                            if js_path.name == "component.js"
+                            else js_path.relative_to(comp_dir).with_suffix("").as_posix()
+                        ),
+                        source_files=tuple(sorted(source_files)),
+                        component_source=component_source,
+                        template_source=template_source,
+                        style_source=style_source,
+                    )
                 )
-            )
 
         return tuple(bundles)
 
@@ -80,18 +179,40 @@ class EmberClassicComponentExtractor(ComponentExtractorPort):
         component_source: str,
         template_source: str = "",
         style_source: str = "",
+        *,
+        component_name: str | None = None,
     ) -> IntermediateComponent:
         """Parse presentational Ember Classic JS and HBS files into an IntermediateComponent."""
-        # Detect state properties (e.g. isExpanded: false)
+        # Detect state properties (e.g. isExpanded: false, selectedItems: A())
         state_properties: list[str] = []
         prop_pattern = re.compile(
-            r"^\s*([a-zA-Z0-9_]+)\s*:\s*(false|true|['\"].*?['\"]|\d+)\s*,?",
+            r"^(?: {2,4}|\t)([a-zA-Z0-9_]+)\s*:\s*"
+            r"(?:false|true|['\"].*?['\"]|\d+|\[\]|\{\}|A\(\))\s*,?",
             re.MULTILINE,
         )
         for match in prop_pattern.finditer(component_source):
             prop_name = match.group(1)
-            if prop_name not in ("actions",):
+            if (
+                prop_name not in ("actions", "tagName", "classNames", "classNameBindings")
+                and prop_name not in _JS_RESERVED_KEYWORDS
+                and prop_name not in state_properties
+            ):
                 state_properties.append(prop_name)
+
+        # Detect injected services (e.g. service('intl') or service())
+        injected_services: list[str] = []
+        service_pattern = re.compile(
+            r"([a-zA-Z0-9_]+)\s*:\s*(?:Ember\.)?(?:inject\.)?service\(\s*(?:['\"]([^'\"]+)['\"])?\s*\)"
+        )
+        for m in service_pattern.finditer(component_source):
+            field_name = m.group(1)
+            svc_arg = m.group(2)
+            raw_svc = svc_arg.split("/")[-1] if svc_arg else field_name
+            pascal_svc = _to_pascal_case(raw_svc)
+            if not pascal_svc.endswith("Service"):
+                pascal_svc = f"{pascal_svc}Service"
+            if pascal_svc not in injected_services:
+                injected_services.append(pascal_svc)
 
         # Detect actions
         methods: list[str] = []
@@ -99,7 +220,29 @@ class EmberClassicComponentExtractor(ComponentExtractorPort):
         if actions_block:
             action_content = actions_block.group(1)
             for m in re.finditer(r"([a-zA-Z0-9_]+)\s*\([^)]*\)\s*\{", action_content):
-                methods.append(m.group(1))
+                action_name = m.group(1)
+                if action_name not in _JS_RESERVED_KEYWORDS and action_name not in methods:
+                    methods.append(action_name)
+
+        # Detect direct component methods
+        for m in re.finditer(
+            r"^\s*([a-zA-Z0-9_]+)\s*\([^)]*\)\s*\{", component_source, re.MULTILINE
+        ):
+            method_name = m.group(1)
+            if (
+                method_name
+                not in (
+                    "init",
+                    "didInsertElement",
+                    "willDestroyElement",
+                    "didReceiveAttrs",
+                    "didUpdateAttrs",
+                    "actions",
+                )
+                and method_name not in _JS_RESERVED_KEYWORDS
+                and method_name not in methods
+            ):
+                methods.append(method_name)
 
         # Detect template inputs (e.g. {{@name}}, {{@description}})
         inputs: list[str] = []
@@ -108,15 +251,20 @@ class EmberClassicComponentExtractor(ComponentExtractorPort):
             if arg_name not in inputs:
                 inputs.append(arg_name)
 
-        name = "UserCard"
-        tag_name = "app-user-card"
+        name = component_name or "UserCard"
+        tag_name = f"app-{_to_kebab_case(name)}"
 
+        semantics = component_semantics(component_source)
         return IntermediateComponent(
             name=name,
             tag_name=tag_name,
             inputs=tuple(sorted(inputs)),
-            state_properties=tuple(sorted(state_properties)),
-            methods=tuple(sorted(methods)),
+            state_properties=tuple(sorted(semantics.defaults)),
+            state_types=semantics.types,
+            state_defaults=semantics.defaults,
+            methods=tuple(sorted(semantics.bodies)),
+            method_bodies=semantics.bodies,
+            injected_services=tuple(sorted(injected_services)),
             template_raw=template_source,
             style_raw=style_source,
             metadata={"source_framework": "ember-classic"},
@@ -136,7 +284,8 @@ class AngularJsDirectiveExtractor(ComponentExtractorPort):
             [
                 p
                 for p in root.rglob("*.js")
-                if (
+                if _is_discovery_path(root, p)
+                and (
                     p.name.endswith(".directive.js")
                     or p.name.endswith(".component.js")
                     or (".directive" in p.name and not p.name.endswith(".spec.js"))
@@ -150,7 +299,7 @@ class AngularJsDirectiveExtractor(ComponentExtractorPort):
         )
 
         for js_path in directive_files:
-            content = js_path.read_text(encoding="utf-8")
+            content = _read_source(root, js_path)
             # Extract directive/component name
             dir_match = re.search(
                 r"\.(?:directive|component)\(\s*['\"]([a-zA-Z0-9_-]+)['\"]", content
@@ -186,9 +335,9 @@ class AngularJsDirectiveExtractor(ComponentExtractorPort):
                 root / "src" / f"{base_stem}.html",
             ]
             for tpl_path in tpl_candidates:
-                if tpl_path.is_file():
+                if tpl_path.exists() or tpl_path.is_symlink():
                     source_files.append(str(tpl_path.relative_to(root)).replace("\\", "/"))
-                    template_source = tpl_path.read_text(encoding="utf-8")
+                    template_source = _read_source(root, tpl_path)
                     break
 
             # Look for css file
@@ -199,9 +348,9 @@ class AngularJsDirectiveExtractor(ComponentExtractorPort):
                 root / "src" / "dashboard.css",
             ]
             for css_path in css_candidates:
-                if css_path.is_file():
+                if css_path.exists() or css_path.is_symlink():
                     source_files.append(str(css_path.relative_to(root)).replace("\\", "/"))
-                    style_source = css_path.read_text(encoding="utf-8")
+                    style_source = _read_source(root, css_path)
                     break
 
             bundles.append(
@@ -221,6 +370,8 @@ class AngularJsDirectiveExtractor(ComponentExtractorPort):
         component_source: str,
         template_source: str = "",
         style_source: str = "",
+        *,
+        component_name: str | None = None,
     ) -> IntermediateComponent:
         """Parse AngularJS directive/component code and template into IntermediateComponent."""
         # Detect directive or component name
@@ -228,7 +379,7 @@ class AngularJsDirectiveExtractor(ComponentExtractorPort):
             r"\.(?:directive|component)\(\s*['\"]([a-zA-Z0-9_-]+)['\"]", component_source
         )
         raw_name = dir_match.group(1) if dir_match else "userBadge"
-        name = _to_pascal_case(raw_name)
+        name = component_name or _to_pascal_case(raw_name)
         kebab_name = _to_kebab_case(raw_name)
         tag_name = f"app-{kebab_name}"
 
@@ -352,13 +503,14 @@ class AngularJsServiceExtractor(ServiceExtractorPort):
             [
                 p
                 for p in root.rglob("*.js")
-                if (p.name.endswith(".service.js") or p.name.endswith(".factory.js"))
+                if _is_discovery_path(root, p)
+                and (p.name.endswith(".service.js") or p.name.endswith(".factory.js"))
                 and not p.name.endswith(".spec.js")
             ]
         )
 
         for js_path in service_files:
-            content = js_path.read_text(encoding="utf-8")
+            content = _read_source(root, js_path)
             match = re.search(r"\.(?:service|factory)\(\s*['\"]([a-zA-Z0-9_-]+)['\"]", content)
             raw_name = (
                 match.group(1)
@@ -439,7 +591,11 @@ class AngularJsServiceExtractor(ServiceExtractorPort):
 
 
 class AngularStandaloneComponentRenderer(ComponentRendererPort):
-    """Renders modern Angular 17+ standalone components conforming to project Angular standards."""
+    """Renders modern Angular standalone components conforming to project standards."""
+
+    def output_paths(self, name: str, namespace: str) -> tuple[str, str, str, str]:
+        stem = f"src/app/components/{namespace}/{_to_kebab_case(name)}.component"
+        return stem + ".ts", stem + ".html", stem + ".scss", stem + ".spec.ts"
 
     def render_component_ts(self, component: IntermediateComponent) -> str:
         """Render standalone TypeScript component class with OnPush, Signals, and DI."""
@@ -470,6 +626,7 @@ class AngularStandaloneComponentRenderer(ComponentRendererPort):
                 if t == "boolean"
                 else ("0" if t == "number" else ("[]" if t == "any[]" else "''"))
             )
+            default_val = component.state_defaults.get(prop, default_val)
             state_lines.append(f"  readonly {prop} = signal<{t}>({default_val});")
         state_code = "\n".join(state_lines)
 
@@ -484,8 +641,9 @@ class AngularStandaloneComponentRenderer(ComponentRendererPort):
                 svc_kebab = _to_kebab_case(svc)
                 if svc_kebab.endswith("-service"):
                     svc_kebab = svc_kebab[:-8]
+                service_root = component.metadata.get("service_import_root", "../../services")
                 service_imports.append(
-                    f"import {{ {svc} }} from '../../services/{svc_kebab}.service';"
+                    f"import {{ {svc} }} from '{service_root}/{svc_kebab}.service';"
                 )
                 field_name = svc[:1].lower() + svc[1:]
                 injected_fields.append(f"  private readonly {field_name} = inject({svc});")
@@ -496,7 +654,18 @@ class AngularStandaloneComponentRenderer(ComponentRendererPort):
         # Methods
         methods_code: list[str] = []
         for method in component.methods:
-            if "toggle" in method.lower():
+            if component.metadata.get("source_framework") == "ember-classic":
+                if method not in component.method_bodies:
+                    raise ValueError(
+                        "EMBER_CONSTRUCT_UNSUPPORTED: method body evidence is missing."
+                    )
+                body = component.method_bodies[method]
+                methods_code.append(
+                    f"  {method}(): void {{\n"
+                    + "\n".join("    " + line for line in body.splitlines())
+                    + "\n  }"
+                )
+            elif "toggle" in method.lower():
                 prop_target = (
                     component.state_properties[0] if component.state_properties else "isExpanded"
                 )
@@ -525,7 +694,7 @@ class AngularStandaloneComponentRenderer(ComponentRendererPort):
         class_body_sections = [
             s
             for s in (
-                injected_fields_block.strip(),
+                injected_fields_block.strip("\r\n"),
                 inputs_code,
                 outputs_code,
                 state_code,
@@ -551,6 +720,8 @@ class AngularStandaloneComponentRenderer(ComponentRendererPort):
 
     def render_template_html(self, component: IntermediateComponent) -> str:
         """Render HTML template with native Angular control flow (@if) and Bootstrap 5 utilities."""
+        if component.metadata.get("source_framework") == "ember-classic":
+            return translate_template(component)
         is_angularjs = component.metadata.get("source_framework") in (
             "angularjs-directive",
             "angularjs-component",
@@ -594,6 +765,8 @@ class AngularStandaloneComponentRenderer(ComponentRendererPort):
 
     def render_style_scss(self, component: IntermediateComponent) -> str:
         """Render component-scoped modern SCSS stylesheet."""
+        if component.metadata.get("source_framework") == "ember-classic":
+            return component.style_raw
         kebab_name = _to_kebab_case(component.name)
         return f"// Component-scoped SCSS\n.{kebab_name} {{\n  max-width: 480px;\n}}\n"
 
@@ -601,8 +774,29 @@ class AngularStandaloneComponentRenderer(ComponentRendererPort):
         """Render Jasmine/Jest unit test spec with TestBed."""
         comp_class = f"{component.name}Component"
         kebab_name = _to_kebab_case(component.name)
-        toggle_method = component.methods[0] if component.methods else "toggleDetails"
-        state_prop = component.state_properties[0] if component.state_properties else "isExpanded"
+        toggle_methods = [m for m in component.methods if "toggle" in m.lower()]
+        toggle_properties = {}
+        if component.metadata.get("source_framework") == "ember-classic":
+            for method, body in component.method_bodies.items():
+                match = re.fullmatch(r"this\.([\w$]+)\.update\(\(current\) => !current\);", body)
+                if match:
+                    toggle_properties[method] = match.group(1)
+            toggle_methods = sorted(toggle_properties)
+        if toggle_methods and component.state_properties:
+            toggle_method = toggle_methods[0]
+            state_prop = toggle_properties.get(toggle_method, component.state_properties[0])
+            initial = component.state_defaults.get(state_prop, "false")
+            toggled = "false" if initial == "true" else "true"
+            test_assertions = (
+                "    expect(component).toBeTruthy();\n"
+                f"    expect(component.{state_prop}()).toBe({initial});\n"
+                f"    component.{toggle_method}();\n"
+                f"    expect(component.{state_prop}()).toBe({toggled});\n"
+            )
+            test_desc = "should create and toggle local state"
+        else:
+            test_assertions = "    expect(component).toBeTruthy();\n"
+            test_desc = "should create"
 
         return (
             "import { ComponentFixture, TestBed } from '@angular/core/testing';\n"
@@ -618,11 +812,8 @@ class AngularStandaloneComponentRenderer(ComponentRendererPort):
             "    component = fixture.componentInstance;\n"
             "    fixture.detectChanges();\n"
             "  });\n\n"
-            "  it('should create and toggle local state', () => {\n"
-            "    expect(component).toBeTruthy();\n"
-            f"    expect(component.{state_prop}()).toBeFalse();\n"
-            f"    component.{toggle_method}();\n"
-            f"    expect(component.{state_prop}()).toBeTrue();\n"
+            f"  it('{test_desc}', () => {{\n"
+            f"{test_assertions}"
             "  });\n"
             "});\n"
         )
@@ -733,7 +924,11 @@ class AngularStandaloneComponentRenderer(ComponentRendererPort):
 
 
 class AngularStandaloneServiceRenderer(ServiceRendererPort):
-    """Renders modern Angular 17+ injectable services using inject(HttpClient)."""
+    """Renders modern Angular injectable services using inject(HttpClient)."""
+
+    def output_paths(self, name: str) -> tuple[str, str]:
+        stem = f"src/app/services/{_to_kebab_case(name)}.service"
+        return stem + ".ts", stem + ".spec.ts"
 
     def render_service_ts(self, service: IntermediateService) -> str:
         """Render standalone Angular @Injectable service."""

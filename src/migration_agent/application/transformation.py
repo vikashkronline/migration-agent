@@ -2,8 +2,11 @@
 
 import contextlib
 import difflib
+import json
+import os
 import re
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 
 from migration_agent.domain import (
@@ -15,6 +18,7 @@ from migration_agent.domain import (
     FileOperation,
     MigrationPlan,
     PlanStatus,
+    RedactionPolicy,
     SourceComponentBundle,
     SourceServiceBundle,
     compute_changeset_digest,
@@ -22,6 +26,7 @@ from migration_agent.domain import (
     compute_worktree_fingerprint,
     verify_approval,
 )
+from migration_agent.domain.stack import StackRecommendationDraft
 from migration_agent.ports import (
     AuditEvent,
     AuditLogPort,
@@ -29,6 +34,7 @@ from migration_agent.ports import (
     ComponentExtractorPort,
     ComponentRendererPort,
     FilesystemInspectorPort,
+    FoundationTransformationPort,
     FrameworkAdapterRegistry,
     InspectionPolicy,
     OperationalCheckpoint,
@@ -36,6 +42,7 @@ from migration_agent.ports import (
     ServiceRendererPort,
     WorkspacePort,
 )
+from migration_agent.ports.apply_approval import SourceApplyPort
 
 
 def _to_kebab_case(value: str) -> str:
@@ -59,6 +66,10 @@ class TransformationService:
         checkpoint_store: CheckpointPort | None = None,
         service_extractor: ServiceExtractorPort | None = None,
         service_renderer: ServiceRendererPort | None = None,
+        max_preview_files: int | None = None,
+        max_preview_bytes: int | None = None,
+        apply_gateway: Callable[[Path], SourceApplyPort] | None = None,
+        foundation_adapter: FoundationTransformationPort | None = None,
     ) -> None:
         self.workspace_adapter = workspace_adapter
         self.extractor = extractor
@@ -69,6 +80,10 @@ class TransformationService:
         self.checkpoint_store = checkpoint_store
         self.service_extractor = service_extractor
         self.service_renderer = service_renderer
+        self.max_preview_files = max_preview_files
+        self.max_preview_bytes = max_preview_bytes
+        self.apply_gateway = apply_gateway
+        self.foundation_adapter = foundation_adapter
 
     def _resolve_pair(self, root: Path) -> tuple[ComponentExtractorPort, ComponentRendererPort]:
         """Resolve extractor and renderer via explicit injection or capability negotiation."""
@@ -110,32 +125,122 @@ class TransformationService:
         source_root: Path | str,
         plan: MigrationPlan,
         step_id: str | None = None,
+        draft: StackRecommendationDraft | None = None,
     ) -> tuple[ChangeSet, str]:
         """Generate proposed ChangeSet and unified diff without modifying staging or source."""
         root = Path(source_root).resolve()
+        if Path(plan.source_root).resolve() != root:
+            raise ValueError("PROJECT_MISMATCH: plan does not belong to the source repository.")
+        ids = [step.step_id for step in plan.steps]
+        if len(ids) != len(set(ids)):
+            raise ValueError("INVALID_STEP_ID: plan contains duplicate steps.")
+        if step_id is not None and (not step_id.strip() or step_id not in ids):
+            raise ValueError("INVALID_STEP_ID: requested step is not in the plan.")
+        if RedactionPolicy().contains_secret(plan.model_dump_json()):
+            raise ValueError("SECRET_CONTENT_REJECTED: credential-shaped plan content.")
         fingerprint = compute_worktree_fingerprint(root)
-        extractor, renderer = self._resolve_pair(root)
 
         changes: list[FileChange] = []
         diff_chunks: list[str] = []
+        generated_bytes = 0
 
-        bundles = extractor.discover_components(root)
-        if not bundles:
-            # Fallback for mock or custom extractors without discover_components
-            bundles = (
-                SourceComponentBundle(
-                    component_name="UserCard",
-                    source_files=(),
-                    component_source="",
-                    template_source="",
-                    style_source="",
-                ),
-            )
+        def add_change(change: FileChange) -> None:
+            nonlocal generated_bytes
+            content = change.content_bytes or b""
+            if RedactionPolicy().contains_secret(content.decode("utf-8")):
+                raise ValueError("SECRET_CONTENT_REJECTED: generated content contains credentials.")
+            generated_bytes += len(content)
+            if self.max_preview_files is not None and len(changes) >= self.max_preview_files:
+                raise ValueError("PREVIEW_TOO_LARGE: request a smaller step scope.")
+            if self.max_preview_bytes is not None and generated_bytes > self.max_preview_bytes:
+                raise ValueError("PREVIEW_TOO_LARGE: generated content exceeds the byte limit.")
+            if any(previous.path.casefold() == change.path.casefold() for previous in changes):
+                raise ValueError("INVALID_SCOPE: generated paths collide.")
+            changes.append(change)
 
         target_step_id = step_id or (plan.steps[0].step_id if plan.steps else "step-001")
         target_step = None
         if step_id is not None and plan.steps:
             target_step = next((s for s in plan.steps if s.step_id == step_id), None)
+
+        is_foundation = (
+            draft is not None
+            or (target_step is not None and target_step.scope == "foundation")
+            or (step_id is None and plan.steps and all(s.scope == "foundation" for s in plan.steps))
+        )
+
+        if is_foundation:
+            if self.foundation_adapter is None:
+                raise ValueError(
+                    "UNSUPPORTED_PREVIEW: Foundation transformation adapter is required "
+                    "for foundation scope."
+                )
+            project_name = root.name
+            pkg_file = root / "package.json"
+            if pkg_file.is_file():
+                with contextlib.suppress(Exception):
+                    pkg_raw = json.loads(pkg_file.read_text(encoding="utf-8"))
+                    if isinstance(pkg_raw, dict) and "name" in pkg_raw:
+                        project_name = str(pkg_raw["name"])
+
+            foundation_files = self.foundation_adapter.render_foundation_files(
+                project_name, draft=draft
+            )
+            for rel_path, content_str in sorted(foundation_files.items()):
+                content_bytes = content_str.encode("utf-8")
+                digest = compute_file_sha256(content_bytes)
+                existing_file = root / rel_path
+                orig_lines: list[str] = []
+                operation = FileOperation.CREATE
+                if existing_file.is_file():
+                    try:
+                        orig_lines = existing_file.read_text(encoding="utf-8").splitlines(
+                            keepends=True
+                        )
+                        operation = FileOperation.MODIFY
+                    except Exception:
+                        orig_lines = []
+
+                change = FileChange(
+                    path=rel_path,
+                    operation=operation,
+                    file_mode=FileMode.STANDARD,
+                    content_digest=digest,
+                    content_bytes=content_bytes,
+                )
+                add_change(change)
+                new_lines = content_str.splitlines(keepends=True)
+                diff = difflib.unified_diff(
+                    orig_lines,
+                    new_lines,
+                    fromfile=f"a/{rel_path}",
+                    tofile=f"b/{rel_path}",
+                )
+                diff_chunks.append("".join(diff))
+
+            changeset_id = f"cs-{uuid.uuid4().hex[:8]}"
+            preliminary_changeset = ChangeSet(
+                changeset_id=changeset_id,
+                plan_id=plan.plan_id,
+                step_id=target_step_id,
+                base_revision="head-revision",
+                worktree_fingerprint=fingerprint,
+                changes=tuple(changes),
+            )
+            final_changeset = preliminary_changeset.model_copy(
+                update={"changeset_digest": compute_changeset_digest(preliminary_changeset)}
+            )
+            if self.checkpoint_store:
+                self.checkpoint_store.save_changeset(final_changeset)
+            return final_changeset, "\n".join(diff_chunks)
+
+        if target_step and "package.json" in target_step.expected_files:
+            raise ValueError(
+                "FOUNDATION_SCOPE_REQUIRED: dependency/configuration changes use "
+                "the accepted foundation contract."
+            )
+        extractor, renderer = self._resolve_pair(root)
+        bundles = extractor.discover_components(root)
 
         def matches_step_component(
             b: SourceComponentBundle, comp_kebab: str, inter_name: str
@@ -145,13 +250,12 @@ class TransformationService:
             if not target_step.expected_files and not target_step.title:
                 return True
             expected = [f.lower() for f in target_step.expected_files]
-            if any(comp_kebab in f for f in expected):
-                return True
-            for sf in b.source_files:
-                sf_lower = sf.lower()
-                sf_name = Path(sf).name.lower()
-                if any(sf_name in f or f in sf_lower for f in expected):
-                    return True
+            if expected:
+                namespace = b.component_namespace or comp_kebab
+                output_paths = renderer.output_paths(b.component_name, namespace)
+                return bool(
+                    set(expected) & {path.lower() for path in (*b.source_files, *output_paths)}
+                )
             title_lower = target_step.title.lower()
             desc_lower = target_step.description.lower()
             return (
@@ -162,29 +266,43 @@ class TransformationService:
             )
 
         for bundle in bundles:
+            if not matches_step_component(
+                bundle, _to_kebab_case(bundle.component_name), bundle.component_name
+            ):
+                continue
             intermediate = extractor.extract(
                 bundle.component_source,
                 bundle.template_source,
                 bundle.style_source,
+                component_name=bundle.component_name,
             )
             kebab_name = _to_kebab_case(intermediate.name or bundle.component_name)
             if not matches_step_component(bundle, kebab_name, intermediate.name):
                 continue
+
+            namespace = bundle.component_namespace or kebab_name
+            if not all(re.fullmatch(r"[a-zA-Z0-9_-]+", part) for part in namespace.split("/")):
+                raise ValueError("INVALID_SCOPE: unsupported component namespace.")
+            intermediate = intermediate.model_copy(
+                update={
+                    "tag_name": "app-" + namespace.replace("/", "-"),
+                    "metadata": {
+                        **intermediate.metadata,
+                        "service_import_root": "../" * (len(namespace.split("/")) + 1) + "services",
+                    },
+                }
+            )
 
             ts_code = renderer.render_component_ts(intermediate)
             html_code = renderer.render_template_html(intermediate)
             spec_code = renderer.render_spec_ts(intermediate)
             scss_code = renderer.render_style_scss(intermediate)
 
-            kebab_name = _to_kebab_case(intermediate.name)
-            component_dir = f"src/app/components/{kebab_name}"
-
-            generated_files = [
-                (f"{component_dir}/{kebab_name}.component.ts", ts_code.encode("utf-8")),
-                (f"{component_dir}/{kebab_name}.component.html", html_code.encode("utf-8")),
-                (f"{component_dir}/{kebab_name}.component.scss", scss_code.encode("utf-8")),
-                (f"{component_dir}/{kebab_name}.component.spec.ts", spec_code.encode("utf-8")),
-            ]
+            generated_files = zip(
+                renderer.output_paths(intermediate.name, namespace),
+                (code.encode("utf-8") for code in (ts_code, html_code, scss_code, spec_code)),
+                strict=True,
+            )
 
             for rel_path, content_bytes in generated_files:
                 digest = compute_file_sha256(content_bytes)
@@ -195,7 +313,7 @@ class TransformationService:
                     content_digest=digest,
                     content_bytes=content_bytes,
                 )
-                changes.append(change)
+                add_change(change)
 
                 new_lines = content_bytes.decode("utf-8", errors="replace").splitlines(
                     keepends=True
@@ -214,13 +332,15 @@ class TransformationService:
             if not target_step.expected_files and not target_step.title:
                 return True
             expected = [f.lower() for f in target_step.expected_files]
-            if any(svc_kebab in f for f in expected):
-                return True
-            for sf in sb.source_files:
-                sf_lower = sf.lower()
-                sf_name = Path(sf).name.lower()
-                if any(sf_name in f or f in sf_lower for f in expected):
-                    return True
+            if expected:
+                output_paths = (
+                    self.service_renderer.output_paths(sb.service_name)
+                    if self.service_renderer
+                    else ()
+                )
+                return bool(
+                    set(expected) & {path.lower() for path in (*sb.source_files, *output_paths)}
+                )
             title_lower = target_step.title.lower()
             desc_lower = target_step.description.lower()
             return (
@@ -239,11 +359,11 @@ class TransformationService:
                     continue
                 svc_ts = self.service_renderer.render_service_ts(inter_svc)
                 svc_spec = self.service_renderer.render_spec_ts(inter_svc)
-                svc_dir = "src/app/services"
-                svc_files = [
-                    (f"{svc_dir}/{kebab_svc}.service.ts", svc_ts.encode("utf-8")),
-                    (f"{svc_dir}/{kebab_svc}.service.spec.ts", svc_spec.encode("utf-8")),
-                ]
+                svc_files = zip(
+                    self.service_renderer.output_paths(inter_svc.name),
+                    (svc_ts.encode("utf-8"), svc_spec.encode("utf-8")),
+                    strict=True,
+                )
                 for rel_path, content_bytes in svc_files:
                     digest = compute_file_sha256(content_bytes)
                     change = FileChange(
@@ -253,7 +373,7 @@ class TransformationService:
                         content_digest=digest,
                         content_bytes=content_bytes,
                     )
-                    changes.append(change)
+                    add_change(change)
                     new_lines = content_bytes.decode("utf-8", errors="replace").splitlines(
                         keepends=True
                     )
@@ -266,6 +386,9 @@ class TransformationService:
                     diff_chunks.append("".join(diff))
 
         changeset_id = f"cs-{uuid.uuid4().hex[:8]}"
+
+        if not changes:
+            raise ValueError("UNSUPPORTED_PREVIEW: no eligible changes for the requested scope.")
 
         preliminary_changeset = ChangeSet(
             changeset_id=changeset_id,
@@ -292,6 +415,7 @@ class TransformationService:
         source_root: Path | str,
         plan: MigrationPlan,
         step_id: str | None = None,
+        draft: StackRecommendationDraft | None = None,
     ) -> tuple[Path, ChangeSet]:
         """Materialize proposed ChangeSet in an isolated staging workspace."""
         if plan.status != PlanStatus.APPROVED or not verify_approval(plan):
@@ -299,7 +423,7 @@ class TransformationService:
                 f"Cannot stage unapproved plan '{plan.plan_id}' (status: {plan.status.value})."
             )
 
-        changeset, _ = self.preview(source_root, plan, step_id=step_id)
+        changeset, _ = self.preview(source_root, plan, step_id=step_id, draft=draft)
 
         staging_dir = self.workspace_adapter.create_staging(
             run_id=run_id,
@@ -353,198 +477,28 @@ class TransformationService:
         backup_root: Path | str | None = None,
         simulate_apply_failure: bool = False,
         simulate_rollback_failure: bool = False,
+        target_root: Path | str | None = None,
     ) -> ApplyResult:
-        """Execute the ADR-8 4-step controlled apply protocol with verified rollback."""
-        root = Path(source_root).resolve()
-
-        def record_outcome(result: ApplyResult) -> ApplyResult:
-            if self.audit_logger:
-                self.audit_logger.record_event(
-                    AuditEvent(
-                        event_id=f"evt-{uuid.uuid4().hex[:8]}",
-                        run_id=plan.run_id,
-                        event_type=f"APPLY_{result.status.value}",
-                        actor=actor,
-                        payload={
-                            "changeset_id": changeset.changeset_id,
-                            "plan_id": plan.plan_id,
-                            "status": result.status.value,
-                            "diagnostics": list(result.diagnostics),
-                        },
-                    )
+        """Route every source or target mutation through the shared exact approval gate."""
+        destination = Path(target_root or source_root).resolve()
+        if target_root is not None:
+            src = Path(source_root).resolve()
+            if (
+                destination == src
+                or str(destination).startswith(str(src) + os.sep)
+                or str(src).startswith(str(destination) + os.sep)
+            ):
+                raise ValueError(
+                    "OVERLAPPING_ROOTS_REJECTED: target_root and source_root must be distinct."
                 )
-            if self.checkpoint_store:
-                self.checkpoint_store.save_checkpoint(
-                    OperationalCheckpoint(
-                        checkpoint_id=f"chk-{uuid.uuid4().hex[:8]}",
-                        run_id=plan.run_id,
-                        checkpoint_type=f"APPLY_{result.status.value}",
-                        step_id=changeset.step_id,
-                        state_data={
-                            "changeset_id": changeset.changeset_id,
-                            "status": result.status.value,
-                        },
-                    )
-                )
-            return result
-
-        # Step 1: Re-validate plan approval
-        if plan.status != PlanStatus.APPROVED or not verify_approval(plan):
-            return record_outcome(
-                ApplyResult(
-                    status=ApplyStatus.BASE_CHANGED,
-                    changeset_id=changeset.changeset_id,
-                    diagnostics=("Plan approval signature is invalid or unapproved.",),
-                )
+        if self.apply_gateway is None:
+            return ApplyResult(
+                status=ApplyStatus.BASE_CHANGED,
+                changeset_id=changeset.changeset_id,
+                diagnostics=("APPROVAL_REQUIRED: shared apply gate and human review required.",),
             )
-
-        # Step 2: Base-state binding & drift check
-        current_fingerprint = compute_worktree_fingerprint(root)
-        if current_fingerprint != changeset.worktree_fingerprint:
-            return record_outcome(
-                ApplyResult(
-                    status=ApplyStatus.BASE_CHANGED,
-                    changeset_id=changeset.changeset_id,
-                    diagnostics=(
-                        "Target repository working tree has drifted from base state. "
-                        f"Expected fingerprint '{changeset.worktree_fingerprint}', "
-                        f"got '{current_fingerprint}'.",
-                    ),
-                )
-            )
-
-        # Step 3: Preflight dry-run check
-        for change in changeset.changes:
-            target_path = root / change.path
-            # Ensure path containment
-            if not str(target_path.resolve()).startswith(str(root)):
-                return record_outcome(
-                    ApplyResult(
-                        status=ApplyStatus.BASE_CHANGED,
-                        changeset_id=changeset.changeset_id,
-                        diagnostics=(f"Target path '{change.path}' escapes repository root.",),
-                    )
-                )
-
-        # Step 4: Backup snapshot generation
-        backup_base = Path(backup_root).resolve() if backup_root else root.parent / ".agent-backups"
-        backup_dir = backup_base / changeset.changeset_id
-        backup_dir.mkdir(parents=True, exist_ok=True)
-
-        original_files: dict[str, bytes] = {}
-        for change in changeset.changes:
-            target_path = root / change.path
-            if target_path.exists() and target_path.is_file():
-                content = target_path.read_bytes()
-                original_files[change.path] = content
-                backup_file = backup_dir / change.path
-                backup_file.parent.mkdir(parents=True, exist_ok=True)
-                backup_file.write_bytes(content)
-
-        # Step 5: Controlled patch application
-        applied_paths: list[str] = []
-        try:
-            if simulate_apply_failure:
-                raise OSError("Simulated filesystem write error during controlled apply.")
-
-            for change in changeset.changes:
-                target_path = root / change.path
-                if change.operation == FileOperation.DELETE:
-                    if target_path.exists():
-                        target_path.unlink()
-                else:
-                    target_path.parent.mkdir(parents=True, exist_ok=True)
-                    content = change.content_bytes or b""
-                    target_path.write_bytes(content)
-                    if change.file_mode == FileMode.EXECUTABLE:
-                        with contextlib.suppress(OSError):
-                            target_path.chmod(0o755)
-                    else:
-                        with contextlib.suppress(OSError):
-                            target_path.chmod(0o644)
-                applied_paths.append(change.path)
-
-            # Step 6: Postcondition validation
-            for change in changeset.changes:
-                target_path = root / change.path
-                if change.operation == FileOperation.DELETE:
-                    if target_path.exists():
-                        raise ValueError(
-                            f"Postcondition failed: file '{change.path}' was not deleted."
-                        )
-                else:
-                    if not target_path.exists():
-                        raise ValueError(
-                            f"Postcondition failed: file '{change.path}' does not exist."
-                        )
-                    actual_digest = compute_file_sha256(target_path.read_bytes())
-                    if actual_digest != change.content_digest:
-                        raise ValueError(
-                            f"Postcondition digest mismatch on '{change.path}': "
-                            f"expected '{change.content_digest}', got '{actual_digest}'."
-                        )
-
-            return record_outcome(
-                ApplyResult(
-                    status=ApplyStatus.APPLIED,
-                    changeset_id=changeset.changeset_id,
-                    applied_paths=tuple(applied_paths),
-                    backup_snapshot_path=str(backup_dir),
-                    diagnostics=("All postcondition verification checks passed successfully.",),
-                )
-            )
-
-        except Exception as apply_err:
-            # Step 7: Rollback on failure
-            try:
-                if simulate_rollback_failure:
-                    raise OSError("Simulated failure restoring backup files.")
-
-                # Revert all changes
-                for change in changeset.changes:
-                    target_path = root / change.path
-                    if change.path in original_files:
-                        target_path.write_bytes(original_files[change.path])
-                    else:
-                        if target_path.exists():
-                            target_path.unlink()
-
-                # Verify rollback restored exact prior state
-                for path_str, orig_bytes in original_files.items():
-                    restored_path = root / path_str
-                    if not restored_path.exists() or restored_path.read_bytes() != orig_bytes:
-                        raise ValueError(f"Rollback verification failed on '{path_str}'.")
-
-                return record_outcome(
-                    ApplyResult(
-                        status=ApplyStatus.ROLLED_BACK,
-                        changeset_id=changeset.changeset_id,
-                        applied_paths=(),
-                        backup_snapshot_path=str(backup_dir),
-                        diagnostics=(
-                            f"Controlled apply failed: {apply_err}. "
-                            "Rollback cleanly executed and verified.",
-                        ),
-                    )
-                )
-            except Exception as rollback_err:
-                # Transition explicitly to RecoveryRequired (Invariant 28)
-                return record_outcome(
-                    ApplyResult(
-                        status=ApplyStatus.RECOVERY_REQUIRED,
-                        changeset_id=changeset.changeset_id,
-                        applied_paths=tuple(applied_paths),
-                        backup_snapshot_path=str(backup_dir),
-                        diagnostics=(
-                            f"CRITICAL: Controlled apply failed ({apply_err}) "
-                            f"AND rollback failed ({rollback_err}). "
-                            "Manual operator recovery required.",
-                        ),
-                        recovery_details={
-                            "apply_error": str(apply_err),
-                            "rollback_error": str(rollback_err),
-                            "backup_dir": str(backup_dir),
-                            "affected_paths": applied_paths,
-                        },
-                    )
-                )
+        if simulate_apply_failure or simulate_rollback_failure:
+            raise ValueError("TEST_FLAG_REJECTED: failure injection is not a source apply option.")
+        return self.apply_gateway(destination).apply(
+            plan.plan_id, changeset.step_id, changeset.changeset_id
+        )

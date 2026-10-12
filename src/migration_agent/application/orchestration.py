@@ -15,7 +15,6 @@ from migration_agent.application.validation import (
     ValidationService,
 )
 from migration_agent.domain import (
-    ApplyStatus,
     AssuranceLevel,
     ChangeSet,
     ExecutionStep,
@@ -37,6 +36,7 @@ from migration_agent.ports import (
     CheckpointPort,
     GovernancePort,
 )
+from migration_agent.ports.apply_approval import StagedWorkflowPort
 
 
 class ResumableExecutionService:
@@ -343,6 +343,10 @@ class MigrationPipelineService:
         inventory_service: InventoryService | None = None,
         analysis_service: AnalysisService | None = None,
         audit_logger: AuditLogPort | None = None,
+        workflow: StagedWorkflowPort | None = None,
+        runtime_provider: str = "gemini",
+        runtime_model: str = "gemini-2.5-pro",
+        runtime_dry_run: bool = False,
     ) -> None:
         self.checkpoint_store = checkpoint_store
         self.transformation_service = transformation_service
@@ -354,6 +358,10 @@ class MigrationPipelineService:
         self.inventory_service = inventory_service
         self.analysis_service = analysis_service
         self.audit_logger = audit_logger
+        self.workflow = workflow
+        self.runtime_provider = runtime_provider
+        self.runtime_model = runtime_model
+        self.runtime_dry_run = runtime_dry_run
 
     @staticmethod
     def _verify_git_clean(repo_root: Path) -> None:
@@ -399,10 +407,22 @@ class MigrationPipelineService:
                 f"Project path '{resolved_path}' does not exist or is not a directory."
             )
 
-        if (resolved_path / ".git").is_dir() and not allow_dirty:
+        if self.workflow is not None:
+            self.workflow.verify_source()
+        elif (resolved_path / ".git").is_dir() and not allow_dirty:
             self._verify_git_clean(resolved_path)
 
-        self.governance.ensure_governance_layout(str(resolved_path))
+        governance_root = (
+            Path(output_dir)
+            if output_dir
+            else Path(staging_root or resolved_path.parent / ".agent_staging") / "governance"
+        )
+        governance_root = governance_root.resolve()
+        if governance_root.is_relative_to(resolved_path) or resolved_path.is_relative_to(
+            governance_root
+        ):
+            raise ValueError("UNSAFE_ROOT_OVERLAP: governance output must be outside the source.")
+        self.governance.ensure_governance_layout(str(governance_root))
 
         # Phase 1: Planning
         if plan_id:
@@ -418,12 +438,17 @@ class MigrationPipelineService:
                 )
             inv = self.inventory_service.inventory(resolved_path)
             _, analysis = self.analysis_service.analyze(
-                resolved_path, provider="gemini", model="gemini-2.5-pro", dry_run=True
+                resolved_path,
+                provider=self.runtime_provider,
+                model=self.runtime_model,
+                dry_run=self.runtime_dry_run,
             )
             plan, _ = self.planning_service.create_plan(
                 inventory=inv,
                 analysis=analysis,
-                project_root=str(resolved_path),
+                project_root=str(governance_root),
+                provider=self.runtime_provider,
+                model=self.runtime_model,
             )
 
         # Phase 2: Approval
@@ -434,7 +459,7 @@ class MigrationPipelineService:
                     plan.plan_id,
                     actor=actor,
                     assurance_level=AssuranceLevel.MODE_B,
-                    project_root=str(resolved_path),
+                    project_root=str(governance_root),
                 )
             elif confirm_callback is not None:
                 approved = confirm_callback(plan)
@@ -450,7 +475,7 @@ class MigrationPipelineService:
                     plan.plan_id,
                     actor=actor,
                     assurance_level=AssuranceLevel.MODE_B,
-                    project_root=str(resolved_path),
+                    project_root=str(governance_root),
                 )
             else:
                 raise ValueError(
@@ -474,6 +499,35 @@ class MigrationPipelineService:
                 changeset_digest=changeset.changeset_digest,
                 dry_run=True,
                 diagnostics=first_few_diff,
+            )
+
+        if self.workflow is not None:
+            selected = step_id or (plan.steps[0].step_id if len(plan.steps) == 1 else None)
+            if selected is None:
+                raise ValueError("STEP_REQUIRED: select one grounded plan step.")
+            record, guarded_repairs = self.repair_service.prepare_workflow(
+                self.workflow, plan, selected, skip_validation, max_repairs
+            )
+            return MigrationPipelineResult(
+                status="approval_required"
+                if record.state.value == "VALIDATION_PASSED"
+                else "failed",
+                run_id=plan.run_id,
+                plan_id=plan.plan_id,
+                step_id=selected,
+                changeset_id=record.changeset_id,
+                changeset_digest=record.changeset_digest,
+                validation_status=record.state.value,
+                validation_checks_count=len(record.validation_results),
+                repair_attempts_count=len(guarded_repairs),
+                diagnostics=("Review the exact ChangeSet with agent review, then agent approve.",)
+                if record.state.value == "VALIDATION_PASSED"
+                else tuple(
+                    diagnostic
+                    for result in record.validation_results
+                    for diagnostic in result.diagnostics
+                )
+                or (f"Workflow stopped in {record.state.value}.",),
             )
 
         # Phase 4: Staging workspace materialization
@@ -580,30 +634,7 @@ class MigrationPipelineService:
                 md_report_path=md_path,
             )
 
-        # Phase 6: Controlled Apply (ADR-8)
-        apply_res = self.transformation_service.apply(
-            source_root=resolved_path,
-            changeset=current_changeset,
-            plan=plan,
-            actor=actor,
-            backup_root=backup_root,
-        )
-        if apply_res.status != ApplyStatus.APPLIED:
-            return MigrationPipelineResult(
-                status="failed",
-                run_id=plan.run_id,
-                plan_id=plan.plan_id,
-                step_id=step_id,
-                changeset_id=current_changeset.changeset_id,
-                changeset_digest=current_changeset.changeset_digest,
-                validation_status=val_status,
-                validation_checks_count=len(val_results),
-                repair_attempts_count=len(repair_attempts),
-                backup_snapshot_path=apply_res.backup_snapshot_path,
-                diagnostics=apply_res.diagnostics,
-            )
-
-        # Phase 7: Audit & Final Report
+        # Human ChangeSet approval is separate from legacy plan sign-off.
         report = self.report_service.compile_report(
             run_id=plan.run_id,
             plan_id=plan.plan_id,
@@ -611,47 +642,26 @@ class MigrationPipelineService:
             staging_root=str(staging_dir),
             validation_results=val_results,
             repair_attempts=repair_attempts,
-            applied_changeset=current_changeset,
-            terminal_status=RunStatus.SUCCESS,
+            applied_changeset=None,
         )
-        json_path = None
-        md_path = None
+        json_path = md_path = None
         if output_dir:
-            out_p = Path(output_dir)
-            out_p.mkdir(parents=True, exist_ok=True)
-            self.report_service.save_report(report, output_dir=out_p)
-            json_path = str(out_p / f"run_report_{report.run_id}.json")
-            md_path = str(out_p / f"run_report_{report.run_id}.md")
-
-        if self.audit_logger:
-            self.audit_logger.record_event(
-                AuditEvent(
-                    event_id=f"evt-{uuid.uuid4().hex[:8]}",
-                    run_id=plan.run_id,
-                    event_type="PIPELINE_MIGRATION_COMPLETED",
-                    actor=actor,
-                    payload={
-                        "plan_id": plan.plan_id,
-                        "step_id": step_id,
-                        "changeset_id": current_changeset.changeset_id,
-                        "applied_paths_count": len(apply_res.applied_paths),
-                        "validation_status": val_status,
-                    },
-                )
-            )
-
+            report_paths = self.report_service.save_report(report, output_dir=output_dir)
+            json_path, md_path = str(report_paths[0]), str(report_paths[1])
         return MigrationPipelineResult(
-            status="ok",
+            status="approval_required",
             run_id=plan.run_id,
             plan_id=plan.plan_id,
-            step_id=step_id,
-            applied_paths=apply_res.applied_paths,
+            step_id=current_changeset.step_id,
             changeset_id=current_changeset.changeset_id,
             changeset_digest=current_changeset.changeset_digest,
             validation_status=val_status,
             validation_checks_count=len(val_results),
             repair_attempts_count=len(repair_attempts),
-            backup_snapshot_path=apply_res.backup_snapshot_path,
             json_report_path=json_path,
             md_report_path=md_path,
+            diagnostics=(
+                "APPROVAL_REQUIRED: stage and validate with the shared workflow, then "
+                "run agent approve for the exact ChangeSet before agent apply.",
+            ),
         )

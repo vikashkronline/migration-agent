@@ -138,3 +138,53 @@ flowchart LR
 ```
 
 - **RFC 8785 Canonical Serialization**: Metadata hashing uses deterministic JSON canonicalization. Plan approval signatures bind uniquely to the exact plan digest and policy digest; any post-approval tampering invalidates the approval token immediately.
+
+## Phase 16 additions
+
+The stdio surface now exposes fifteen typed tools: five inspection tools, six evidence/proposal/operation tools, and four stage/validate/review-request/apply tools. Request deduplication, generation leases, exclusive apply locks, immutable validation provenance, and single-use external approvals gate mutation. CLI review, approve, recover, and client setup are available. See [workflow guide](phase-16-client-setup.md).
+
+Standalone `migrate` uses the configured provider and a bounded repair loop
+through the same proposal/stage/validation gates. `submit-repair` supports external
+typed proposals. Successful validation still requires separate human approval.
+Semantic evaluation's `compilation_pass_rate` and `spec_pass_rate` remain structural
+proxy metrics; passing immutable apply validation comes from actual command
+execution in the configured isolated toolchain.
+
+## Phase 16 native validation
+
+| Mode | Code execution | Apply evidence |
+|---|---|---|
+| Restricted | None | None |
+| Native | Human-authorized trusted account execution | Version 2 evidence plus separate exact approval |
+| Container | Pinned local isolated image | Version 2 evidence plus separate exact approval |
+
+Windows native validation supports fixed Node CLI templates, external offline
+dependencies, bounded in-scope repair consent, revocation and atomic Job Object
+supervision. It does not provide filesystem or network confinement. Linux uses
+a separate guardian and has separate acceptance. [Operations](native-validation.md).
+
+## Browser UI/UX validation
+
+The shared production path now requires real browser capture and complete visual
+review of a configured route/state/viewport matrix. Three added MCP tools expose
+specialist instructions, captured PNGs and typed review submission (18 tools total).
+Repair creates new artifacts and recaptures. Optional source reference comparison
+and optional E2E-last are available. Direct provider image/code export remains
+blocked pending authorization. [Operation guide](browser-ui-ux-validation.md).
+
+## G1 rule registry and standards evidence
+
+`agent validation standards` provides technical coverage/rule checks over
+the shared staged-artifact workflow. It reports actual LF checks, reconciled
+command evidence and pending semantic-review obligations using an opt-in profile.
+Strict ingestion and digest/base/staging checks reject unsupported or stale inputs.
+It does not execute commands, mutate source or authorize apply.
+See [the scope and CLI guide](standards-review.md).
+
+## Signed project access and user administration
+
+Project writes now require current membership in an externally anchored signed
+access revision. Owner CLI/API/GUI workflows manage finite roles, enrollment,
+revocation and ownership. GitHub/GitLab imports use stable account/repository IDs;
+provider roles do not grant agent authority. Human-only signing and current-worker
+checks remain mandatory. See [operations and deployment boundaries](rbac-and-users.md).

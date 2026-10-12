@@ -1,0 +1,27 @@
+........................................................................ [ 10%]
+........................................................................ [ 20%]
+........s............................................................... [ 30%]
+........................................................................ [ 40%]
+......................s................................................. [ 51%]
+........................................................................ [ 61%]
+..........s............................................................. [ 71%]
+........................................................................ [ 81%]
+........................................................................ [ 92%]
+..........F.............................................                 [100%]
+================================== FAILURES ===================================
+________________ test_empty_project_never_fabricates_readiness ________________
+
+tmp_path = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-770/test_empty_project_never_fabri0')
+
+    def test_empty_project_never_fabricates_readiness(tmp_path: Path) -> None:
+        source = make_source(tmp_path)
+        before = list(source.binding.project_root.rglob("*"))
+        snap = service(source).snapshot()
+>       assert all(n.status == "UNKNOWN" and n.task_count == 0 for n in snap.nodes)
+E       assert False
+E        +  where False = all(<generator object test_empty_project_never_fabricates_readiness.<locals>.<genexpr> at 0x0000023FA029D150>)
+
+tests\unit\test_workbench.py:63: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/unit/test_workbench.py::test_empty_project_never_fabricates_readiness
+1 failed, 700 passed, 3 skipped in 655.27s (0:10:55)

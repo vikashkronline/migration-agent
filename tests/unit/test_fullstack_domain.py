@@ -223,3 +223,22 @@ def test_fullstack_inventory_serialization() -> None:
     assert dumped["schema_version"] == 1
     assert dumped["domains_detected"] == ["frontend"]
     assert dumped["summary"]["total_nodes"] == 1
+
+
+def test_mermaid_preserves_nodes_with_punctuation_collisions() -> None:
+    import re
+
+    first = _make_node("frontend:file:app/a-b/component.js", MigrationDomain.FRONTEND, "first")
+    second = _make_node("frontend:file:app/a_b/component.js", MigrationDomain.FRONTEND, "second")
+    edge = CrossDomainEdge(
+        source_node_id=first.node_id,
+        target_node_id=second.node_id,
+        relation=DependencyRelation.DEPENDS_ON,
+    )
+    graph = CrossDomainDependencyGraph(nodes=(first, second), edges=(edge,))
+    rendered = graph.to_mermaid()
+    identifiers = re.findall(r"^\s+(n_[0-9a-f]{64})\[", rendered, flags=re.MULTILINE)
+    assert len(identifiers) == 2
+    assert len(set(identifiers)) == 2
+    assert f'{identifiers[0]} -->|"depends on"| {identifiers[1]}' in rendered
+    assert graph.model_copy(update={"nodes": (second, first)}).to_mermaid() == rendered

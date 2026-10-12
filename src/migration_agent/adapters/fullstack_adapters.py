@@ -3,7 +3,7 @@
 import contextlib
 import re
 import sqlite3
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from migration_agent.domain import (
@@ -95,8 +95,8 @@ class FrontendDomainAdapter(DomainDiscoveryAdapterPort):
                     if endpoint.startswith("/") and len(endpoint) > 1:
                         api_calls.append(endpoint)
 
-            name = Path(file.path).stem
-            node_id = f"frontend:{name}"
+            name = PurePosixPath(file.path).stem
+            node_id = f"frontend:file:{file.path}"
 
             if (
                 "component" in path_lower
@@ -126,8 +126,7 @@ class FrontendDomainAdapter(DomainDiscoveryAdapterPort):
                     )
                 )
 
-        unique_nodes = {node.node_id: node for node in nodes}
-        return tuple(sorted(unique_nodes.values(), key=lambda n: n.node_id))
+        return tuple(sorted(nodes, key=lambda n: n.node_id))
 
     def discover_edges(
         self, snapshot: RepositorySnapshot, nodes: tuple[CrossDomainNode, ...]

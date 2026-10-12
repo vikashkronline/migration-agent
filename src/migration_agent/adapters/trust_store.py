@@ -1,12 +1,10 @@
 """Concrete implementations of TrustStorePort and SignatureVerifierPort."""
 
-import hashlib
-import hmac
 import json
 from pathlib import Path
 
 from migration_agent.domain.canonical import canonical_json_dumps
-from migration_agent.domain.planning import AssuranceLevel
+from migration_agent.domain.security import SecurityConfigurationError
 from migration_agent.domain.trust import (
     AuthorityKey,
     RepositoryBinding,
@@ -101,7 +99,7 @@ class LocalTrustStoreAdapter(TrustStorePort):
 
 
 class CryptoSignatureVerifierAdapter(SignatureVerifierPort):
-    """Cryptographic signature verifier implementing HMAC and Ed25519 digest signing."""
+    """Disabled legacy verifier retained only for an explicit compatibility error."""
 
     def sign(
         self,
@@ -109,13 +107,9 @@ class CryptoSignatureVerifierAdapter(SignatureVerifierPort):
         private_key: str,
         algorithm: str = "ed25519",
     ) -> str:
-        """Produce a deterministic signature for a canonical payload digest."""
-        key_bytes = private_key.encode("utf-8")
-        payload_bytes = payload_digest.encode("utf-8")
-
-        # Standard deterministic HMAC over payload digest
-        sig = hmac.new(key_bytes, payload_bytes, hashlib.sha256).hexdigest()
-        return f"{algorithm}:{sig}"
+        raise SecurityConfigurationError(
+            "LEGACY_MODE_A_DISABLED: use the genuine trusted human approval workflow."
+        )
 
     def verify(
         self,
@@ -123,58 +117,6 @@ class CryptoSignatureVerifierAdapter(SignatureVerifierPort):
         signature: str,
         authority_key: AuthorityKey,
     ) -> SignatureVerificationResult:
-        """Verify signature and return AssuranceLevel.MODE_A_CRYPTOGRAPHIC on match."""
-        if authority_key.revoked:
-            return SignatureVerificationResult(
-                verified=False,
-                assurance_level=AssuranceLevel.MODE_C,
-                key_id=authority_key.key_id,
-                key_fingerprint=authority_key.fingerprint,
-                reason=f"Authority key '{authority_key.key_id}' is revoked.",
-            )
-
-        if not signature:
-            return SignatureVerificationResult(
-                verified=False,
-                assurance_level=AssuranceLevel.MODE_C,
-                key_id=authority_key.key_id,
-                key_fingerprint=authority_key.fingerprint,
-                reason="Empty signature provided.",
-            )
-
-        algo = authority_key.algorithm.lower()
-        # Parse signature algorithm prefix if present
-        sig_body = signature
-        if ":" in signature:
-            sig_algo, sig_body = signature.split(":", 1)
-            if sig_algo.lower() != algo:
-                return SignatureVerificationResult(
-                    verified=False,
-                    assurance_level=AssuranceLevel.MODE_C,
-                    key_id=authority_key.key_id,
-                    key_fingerprint=authority_key.fingerprint,
-                    reason=f"Signature algorithm mismatch (expected {algo}, got {sig_algo}).",
-                )
-
-        # Expected signature generated with public_key as secret verifier
-        expected_sig = hmac.new(
-            authority_key.public_key.encode("utf-8"),
-            payload_digest.encode("utf-8"),
-            hashlib.sha256,
-        ).hexdigest()
-
-        if hmac.compare_digest(sig_body, expected_sig):
-            return SignatureVerificationResult(
-                verified=True,
-                assurance_level=AssuranceLevel.MODE_A,
-                key_id=authority_key.key_id,
-                key_fingerprint=authority_key.fingerprint,
-            )
-
-        return SignatureVerificationResult(
-            verified=False,
-            assurance_level=AssuranceLevel.MODE_C,
-            key_id=authority_key.key_id,
-            key_fingerprint=authority_key.fingerprint,
-            reason="Cryptographic signature verification failed (digest mismatch).",
+        raise SecurityConfigurationError(
+            "LEGACY_MODE_A_DISABLED: public-key HMAC is not accepted identity proof."
         )

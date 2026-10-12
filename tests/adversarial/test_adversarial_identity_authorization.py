@@ -9,6 +9,8 @@ Tests security invariants for:
 - Assurance Boundary Enforcement (Mode A vs Mode B/C)
 """
 
+import hashlib
+import hmac
 from pathlib import Path
 
 import pytest
@@ -30,6 +32,7 @@ from migration_agent.domain import (
     compute_plan_digest,
     verify_approval,
 )
+from migration_agent.domain.security import SecurityConfigurationError
 from migration_agent.ports.governance import ProjectPolicy
 
 
@@ -69,35 +72,25 @@ def test_policy_tampering_defense(tmp_path: Path) -> None:
 
 
 def test_unknown_key_rejection(tmp_path: Path) -> None:
-    """Signatures generated with unknown keys must be rejected unconditionally."""
-    store = LocalTrustStoreAdapter(trust_root=tmp_path / "trust")
-    verifier = CryptoSignatureVerifierAdapter()
-
-    # Valid key bootstrapped in store
-    legit_key = AuthorityKey(
-        key_id="legit-authority-key",
-        algorithm="ed25519",
-        public_key="legit-secret-seed-987",
-        fingerprint="fp-legit-987",
-        created_at="2026-09-30T00:00:00Z",
+    key = AuthorityKey(
+        key_id="legacy-fixture",
+        public_key="public-fixture",
+        fingerprint="fixture",
+        created_at="2026-10-09T00:00:00Z",
+        revoked=False,
     )
-    store.bootstrap_authority_key("project-x", legit_key)
-
-    # Adversary signs with their own unknown key
-    payload = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-    adversary_sig = verifier.sign(payload, private_key="adversary-key", algorithm="ed25519")
-
-    # Verification against project trust store with unknown key ID must fail
-    record = store.load_trust_record("project-x")
-    assert record is not None
-    unknown_key = record.find_key("adversary-key-id")
-    assert unknown_key is None
-
-    # Even if adversary passes their own key object, verification against legit key fails
-    res = verifier.verify(payload, adversary_sig, legit_key)
-    assert res.verified is False
-    assert res.assurance_level == AssuranceLevel.MODE_C
-    assert "digest mismatch" in (res.reason or "").lower()
+    digest = "sha256:" + "a" * 64
+    public_forgery = (
+        "ed25519:"
+        + hmac.new(
+            key.public_key.encode(),
+            digest.encode(),
+            hashlib.sha256,
+        ).hexdigest()
+    )
+    for signature in (public_forgery, "", "rsa:forged", "ed25519:corrupt"):
+        with pytest.raises(SecurityConfigurationError, match="LEGACY_MODE_A_DISABLED"):
+            CryptoSignatureVerifierAdapter().verify(digest, signature, key)
 
 
 def test_repository_binding_mismatch_defense(tmp_path: Path) -> None:
@@ -160,63 +153,47 @@ def test_repository_binding_mismatch_defense(tmp_path: Path) -> None:
 
 
 def test_signature_integrity_and_corruption_vectors() -> None:
-    """Corrupted signatures, payload changes, and invalid algorithm prefixes must fail."""
-    verifier = CryptoSignatureVerifierAdapter()
     key = AuthorityKey(
-        key_id="k-1",
-        algorithm="ed25519",
-        public_key="correct-shared-secret-12345",
-        fingerprint="fp-1",
-        created_at="2026-09-30T00:00:00Z",
+        key_id="legacy-fixture",
+        public_key="public-fixture",
+        fingerprint="fixture",
+        created_at="2026-10-09T00:00:00Z",
+        revoked=False,
     )
-    digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-    valid_sig = verifier.sign(
-        digest, private_key="correct-shared-secret-12345", algorithm="ed25519"
+    digest = "sha256:" + "a" * 64
+    public_forgery = (
+        "ed25519:"
+        + hmac.new(
+            key.public_key.encode(),
+            digest.encode(),
+            hashlib.sha256,
+        ).hexdigest()
     )
-
-    # 1. Empty signature rejected
-    empty_res = verifier.verify(digest, "", key)
-    assert empty_res.verified is False
-    assert "empty signature" in (empty_res.reason or "").lower()
-
-    # 2. Algorithm mismatch in signature prefix rejected
-    wrong_algo_sig = f"rsa:{valid_sig.split(':', 1)[1]}"
-    algo_res = verifier.verify(digest, wrong_algo_sig, key)
-    assert algo_res.verified is False
-    assert "algorithm mismatch" in (algo_res.reason or "").lower()
-
-    # 3. Bit-flipped / corrupted signature rejected
-    corrupted_body = valid_sig[:-4] + "dead"
-    corrupt_res = verifier.verify(digest, corrupted_body, key)
-    assert corrupt_res.verified is False
-    assert corrupt_res.assurance_level == AssuranceLevel.MODE_C
-
-    # 4. Altered payload digest rejected
-    tampered_digest = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-    digest_res = verifier.verify(tampered_digest, valid_sig, key)
-    assert digest_res.verified is False
+    for signature in (public_forgery, "", "rsa:forged", "ed25519:corrupt"):
+        with pytest.raises(SecurityConfigurationError, match="LEGACY_MODE_A_DISABLED"):
+            CryptoSignatureVerifierAdapter().verify(digest, signature, key)
 
 
 def test_revocation_enforcement() -> None:
-    """Revoked authority keys must fail verification, even with otherwise valid signatures."""
-    verifier = CryptoSignatureVerifierAdapter()
-    revoked_key = AuthorityKey(
-        key_id="compromised-key-99",
-        algorithm="ed25519",
-        public_key="leaked-secret-bytes",
-        fingerprint="fp-comp-99",
+    key = AuthorityKey(
+        key_id="legacy-fixture",
+        public_key="public-fixture",
+        fingerprint="fixture",
+        created_at="2026-10-09T00:00:00Z",
         revoked=True,
-        created_at="2026-09-01T00:00:00Z",
     )
-
-    digest = "sha256:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
-    # Even with legitimate signature produced from the key's secret
-    valid_sig = verifier.sign(digest, private_key="leaked-secret-bytes", algorithm="ed25519")
-
-    res = verifier.verify(digest, valid_sig, revoked_key)
-    assert res.verified is False
-    assert res.assurance_level == AssuranceLevel.MODE_C
-    assert "revoked" in (res.reason or "").lower()
+    digest = "sha256:" + "a" * 64
+    public_forgery = (
+        "ed25519:"
+        + hmac.new(
+            key.public_key.encode(),
+            digest.encode(),
+            hashlib.sha256,
+        ).hexdigest()
+    )
+    for signature in (public_forgery, "", "rsa:forged", "ed25519:corrupt"):
+        with pytest.raises(SecurityConfigurationError, match="LEGACY_MODE_A_DISABLED"):
+            CryptoSignatureVerifierAdapter().verify(digest, signature, key)
 
 
 def test_assurance_boundary_enforcement() -> None:

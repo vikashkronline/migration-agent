@@ -3,9 +3,11 @@
 import json
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from migration_agent.cli import app
+from migration_agent.domain.security import SecurityConfigurationError
 from migration_agent.domain.trust import AuthorityKey
 from migration_agent.packaging import (
     cloak_prompt_string,
@@ -160,28 +162,17 @@ def test_release_manifest_cryptographic_signing_and_verification(tmp_path: Path)
         algorithm="ed25519",
     )
 
-    signed_manifest = generate_release_manifest(
-        version="1.0.0",
-        dist_dir=dist_dir,
-        signing_key=key_secret,
-        key_id="release-key-1",
-    )
-    assert signed_manifest.signature is not None
-    assert signed_manifest.signature.startswith("ed25519:")
-    assert signed_manifest.key_id == "release-key-1"
-
-    # Valid verification with authority key
-    assert verify_release_manifest(signed_manifest, dist_dir, authority_key=authority_key) is True
-
-    # Verification fails with wrong key
-    wrong_key = AuthorityKey(
-        key_id="release-key-1",
-        public_key="wrong-secret-key",
-        fingerprint="sha256:releasekey1fingerprint12345678",
-        created_at="2026-10-02T00:00:00Z",
-        algorithm="ed25519",
-    )
-    assert verify_release_manifest(signed_manifest, dist_dir, authority_key=wrong_key) is False
+    with pytest.raises(SecurityConfigurationError, match="LEGACY_MODE_A_DISABLED"):
+        generate_release_manifest(
+            version="1.0.0",
+            dist_dir=dist_dir,
+            signing_key=key_secret,
+            key_id="release-key-1",
+        )
+    unsigned = generate_release_manifest(version="1.0.0", dist_dir=dist_dir)
+    forged = unsigned.model_copy(update={"signature": "ed25519:public-key-hmac"})
+    with pytest.raises(SecurityConfigurationError, match="LEGACY_MODE_A_DISABLED"):
+        verify_release_manifest(forged, dist_dir, authority_key=authority_key)
 
 
 def test_cli_package_commands(tmp_path: Path) -> None:

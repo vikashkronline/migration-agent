@@ -1,0 +1,88 @@
+
+> control-center@0.1.0 build
+> ng build --configuration production
+
+> Building...
+√ Building...
+Initial chunk files | Names                             |  Raw size | Estimated transfer size
+styles-OFO7XGNC.css | styles                            | 230.94 kB |                22.54 kB
+chunk-7NEZR4UO.js   | -                                 | 205.58 kB |                60.01 kB
+chunk-LCDDMLS3.js   | -                                 |  80.55 kB |                20.01 kB
+chunk-DGYXU2ID.js   | -                                 |  12.88 kB |                 4.02 kB
+chunk-QWZBVU3H.js   | -                                 |   9.22 kB |                 2.76 kB
+chunk-RSSPTSD3.js   | -                                 |   3.58 kB |                 1.28 kB
+main-6U4L7AMH.js    | main                              |   3.45 kB |                 1.33 kB
+chunk-MYWQCBYD.js   | -                                 |   1.36 kB |               556 bytes
+chunk-EWI4HH6N.js   | -                                 |   1.31 kB |               556 bytes
+chunk-YFH3GGGM.js   | -                                 |   1.25 kB |               543 bytes
+chunk-BPBFDFIZ.js   | -                                 |   1.18 kB |               584 bytes
+chunk-DNF5BCNY.js   | -                                 |   1.10 kB |               573 bytes
+chunk-LYML7QHN.js   | -                                 | 785 bytes |               785 bytes
+chunk-RYCSJSGQ.js   | -                                 | 764 bytes |               764 bytes
+
+                    | Initial total                     | 553.94 kB |               116.33 kB
+
+Lazy chunk files    | Names                             |  Raw size | Estimated transfer size
+chunk-AZMSZ2QJ.js   | flowchart-elk-definition-6df44142 |   1.47 MB |               342.76 kB
+chunk-WPWYBQJW.js   | mindmap-definition-e4c1d938       | 544.01 kB |               143.18 kB
+chunk-P2LCMBBF.js   | -                                 | 306.65 kB |                76.90 kB
+chunk-EQMQDPFM.js   | katex                             | 267.72 kB |                63.81 kB
+chunk-NL2PYJTE.js   | sequenceDiagram-82a5b84f          |  83.83 kB |                20.09 kB
+chunk-KTGMSEDC.js   | c4Diagram-3f4bdde3                |  68.35 kB |                15.38 kB
+chunk-ELZ3BNTT.js   | -                                 |  59.73 kB |                15.66 kB
+chunk-5E3Q5GLD.js   | -                                 |  46.66 kB |                12.36 kB
+chunk-KO7ZIPGB.js   | settings-page                     |  41.72 kB |                10.26 kB
+chunk-72FQGXJP.js   | ganttDiagram-3b0b3873             |  40.88 kB |                12.39 kB
+chunk-7TGI5JO4.js   | gitGraphDiagram-f01e8bc2          |  38.70 kB |                 9.96 kB
+chunk-OSNNGIXX.js   | -                                 |  37.78 kB |                10.27 kB
+chunk-5SQLCZV3.js   | blockDiagram-868be97b             |  36.96 kB |                10.43 kB
+chunk-MTAVQHAO.js   | xychartDiagram-3f383b91           |  35.85 kB |                 8.66 kB
+chunk-NNBILQHP.js   | -                                 |  33.96 kB |                 7.75 kB
+...and 43 more lazy chunks files. Use "--verbose" to show all the files.
+
+Application bundle generation complete. [62.102 seconds] - 2026-10-12T18:20:20.334Z
+
+▲ [WARNING] Module 'dayjs' used by 'node_modules/mermaid/dist/mermaid.core.mjs' is not ESM
+
+  CommonJS or AMD dependencies can cause optimization bailouts.
+  For more information see: https://angular.dev/tools/cli/build#configuring-commonjs-dependencies
+
+
+▲ [WARNING] Module '@braintree/sanitize-url' used by 'node_modules/mermaid/dist/mermaid.core.mjs' is not ESM
+
+  CommonJS or AMD dependencies can cause optimization bailouts.
+  For more information see: https://angular.dev/tools/cli/build#configuring-commonjs-dependencies
+
+
+▲ [WARNING] Module 'elkjs/lib/elk.bundled.js' used by 'node_modules/mermaid/dist/flowchart-elk-definition-6df44142.js' is not ESM
+
+  CommonJS or AMD dependencies can cause optimization bailouts.
+  For more information see: https://angular.dev/tools/cli/build#configuring-commonjs-dependencies
+
+
+▲ [WARNING] Module 'cytoscape-cose-bilkent' used by 'node_modules/mermaid/dist/mindmap-definition-e4c1d938.js' is not ESM
+
+  CommonJS or AMD dependencies can cause optimization bailouts.
+  For more information see: https://angular.dev/tools/cli/build#configuring-commonjs-dependencies
+
+
+▲ [WARNING] Module 'dayjs/plugin/isoWeek.js' used by 'node_modules/mermaid/dist/ganttDiagram-3b0b3873.js' is not ESM
+
+  CommonJS or AMD dependencies can cause optimization bailouts.
+  For more information see: https://angular.dev/tools/cli/build#configuring-commonjs-dependencies
+
+
+▲ [WARNING] Module 'dayjs/plugin/customParseFormat.js' used by 'node_modules/mermaid/dist/ganttDiagram-3b0b3873.js' is not ESM
+
+  CommonJS or AMD dependencies can cause optimization bailouts.
+  For more information see: https://angular.dev/tools/cli/build#configuring-commonjs-dependencies
+
+
+▲ [WARNING] Module 'dayjs/plugin/advancedFormat.js' used by 'node_modules/mermaid/dist/ganttDiagram-3b0b3873.js' is not ESM
+
+  CommonJS or AMD dependencies can cause optimization bailouts.
+  For more information see: https://angular.dev/tools/cli/build#configuring-commonjs-dependencies
+
+
+Output location: C:\Projects\New folder\migration-agent\src\migration_agent\ui\static
+

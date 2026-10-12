@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from migration_agent.adapters.checkpoints import SqliteCheckpointStore
 from migration_agent.adapters.governance import GitGovernanceAdapter
 from migration_agent.application.control_service import ControlApiService
@@ -103,12 +105,6 @@ def test_control_api_mutating_idempotency(tmp_path: Path) -> None:
     service = ControlApiService(checkpoint_port=store, governance_port=gov)
     payload = ApprovePlanPayload(actor="lead-dev", request_id="idemp-key-999")
 
-    # First approval
-    view1 = service.approve_plan("plan-idem", payload, tmp_path)
-    assert view1.is_approved is True
-    assert view1.approval_signature is not None
-    assert view1.approval_signature["actor"] == "lead-dev"
-
-    # Second approval with identical request_id returns cached view
-    view2 = service.approve_plan("plan-idem", payload, tmp_path)
-    assert view1 is view2  # Cached instance returned
+    with pytest.raises(ValueError, match="HUMAN_CHANNEL_REQUIRED"):
+        service.approve_plan("plan-idem", payload, tmp_path)
+    assert store.get_plan("plan-idem").approval is None

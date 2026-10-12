@@ -80,9 +80,12 @@ The GUI is a decoupled Single Page Application (SPA) served strictly on loopback
 - **Reactivity & Control Flow:** Angular Signals (`signal()`, `computed()`) and modern template syntax (`@if`, `@else`, `@for ... track`, `@switch`).
 - **Styling:** **Bootstrap 5.3.x utility classes only** (`ms-*`/`me-*`/`ps-*`/`pe-*`, `d-flex gap-*`) with native dark mode support (`data-bs-theme="dark"`).
 - **Behavioral Constraint:** **Bootstrap JavaScript plugins are not a required application interaction dependency.** Angular owns all application behavior and interaction state, including dialogs, navigation, menus, tabs, dropdowns, expand/collapse state, approvals, and WebSocket-driven state.
+- **Responsive Navigation:** Desktop uses a persistent project-tree sidebar; mobile uses a collapsed-by-default overlay navigation drawer. Both share the same selection and expansion state. Keep breadcrumb, current status, and attention access outside the drawer; support accessible dismissal and focus management as specified in the [hierarchical UX plan](../control-center-tree-ux-wireframe-plan.md#responsive-and-accessibility-design). This is a design requirement, not a claim of implemented GUI behavior.
 - **Component Libraries:** **No PrimeNG or third-party component library dependency is required or assumed in the baseline.** The Control Center depends on platform UI contracts and domain view models, keeping the UI layer lean and replaceable.
 - **Diagrams & Security:** **Mermaid.js** text-driven diagram rendering. Repository-generated or agent-generated Mermaid content must be rendered using a restrictive Mermaid security configuration (`securityLevel: 'strict'`). Interactive/clickable behavior and embedded HTML are prohibited for untrusted diagram sources unless explicitly authorized by policy.
 - **Client Transport & WebSocket Security:** Typed HTTP services and authenticated WebSocket client connected to the versioned Control API. Every WebSocket connection must authenticate during handshake using the per-launch session authentication model and must pass Origin validation (`http://127.0.0.1:<port>`). WebSocket messages remain strictly subject to core authorization and Policy Engine checks; the WebSocket channel never constitutes a policy bypass.
+- **Hierarchical Read Models & Consistency:** Backend application queries supply typed, project-scoped tree/readiness projections, bounded child/detail queries and durable snapshot/event reconciliation. The GUI manages presentation and navigation without deriving authorization or lifecycle rollups from unverified event deltas. Stable links retain exact run/artifact context. See the [hierarchical UX contracts and review disposition](../control-center-tree-ux-wireframe-plan.md#control-api-read-models-and-consistency).
+- **Human Approval Channel:** Session authentication, OS identity and CSRF protection do not by themselves establish exact human approval. GUI approval must use an independently accepted human-only channel and the shared application approval contract, preserving policy-required assurance and ChangeSet/base/policy/validation/expiry/nonce binding. Until accepted, retain the trusted-terminal handoff; the GUI never downgrades required Mode A authority.
 
 ---
 
@@ -602,6 +605,36 @@ Expand from frontend components to multi-layer full-stack architectures.
 
 ### Phase 10 — Local Control Center GUI, Hardening & Distribution
 
+**Implementation checkpoint (2026-10-07):** the explicitly authorized common GUI
+now has a modular offline Angular 21 application, lazy feature routes, a
+route-scoped signal store, reusable feedback/status/modal components, typed errors,
+durable invalidation, mobile drawer and exact-artifact navigation. The user's
+selected optional [Git-owned project-work definition](../../docs/project-work.md)
+supplies generic foundation/module groups, owners, criteria and planning
+dependencies linked to existing evidence. Declarations do not authorize execution
+or count as verified completion. Scoped Ask returns cited recorded facts, with
+provider reasoning handed off to the existing CLI/host. Guarded stage/validate/apply
+retain trusted-terminal human approval. The
+[implementation report](../control-center-implementation-report.md) records gates
+and remaining limits. Browser human approval, a full embedded code-review editor
+and verified binary distribution are not implied by this checkpoint or the
+historical Phase 10 scaffolding status.
+
+**Read-only review amendment (2026-10-07):** the user selected an embedded
+read-only diff viewer. Artifacts includes lazy, scoped per-file base/proposal hunks,
+file navigation/search, numbered unified/split views and mobile unified display.
+Immutable recorded Git base objects and exact ChangeSet bindings own review data;
+unavailable/oversized content remains explicit. This adds no comment/edit/review-write
+or browser human-approval channel. See [operations](../../docs/control-center.md).
+
+**Later-stage feedback decision (2026-10-07):** the user deferred developer
+comments and **Request changes** until after manual acceptance of the current GUI.
+The [hierarchical UX plan](../control-center-tree-ux-wireframe-plan.md#later-stage--developer-feedback-and-request-changes)
+defines artifact-bound typed feedback, explicit authorized agent handoff, durable
+resolution tracking and requirement-driven revision support for passing artifacts.
+Revisions retain scope gates and require fresh validation/human approval. This is
+planned future work, not an implemented comment channel or current coding phase.
+
 #### Goal
 Deliver the local web control center and packaging pipeline (**ADR-5, ADR-9**).
 
@@ -616,7 +649,9 @@ Deliver the local web control center and packaging pipeline (**ADR-5, ADR-9**).
 - CSRF defenses for state-changing HTTP requests.
 - Authenticated and Origin-validated WebSocket handshake.
 - Backend authorization enforced independently for every privileged operation.
-- Visual side-by-side diff review, approval signing, and secure Mermaid rendering (`securityLevel: 'strict'`).
+- Lightweight exact-artifact summary/diff and external IDE/PR review handoff, independently accepted human approval/signing, and secure Mermaid rendering (`securityLevel: 'strict'`). A complete embedded code-review environment is not required.
+- Typed project-tree queries with bounded lazy detail/evidence loading, durable event replay/snapshot consistency, stable deep links/history, and the mobile overlay drawer defined in the [hierarchical UX plan](../control-center-tree-ux-wireframe-plan.md). Reconcile legacy GUI state/approval/apply wiring with shared application services before claiming live progress or exact apply.
+- Compatible production Angular build, offline bundled assets, strict CSP without `unsafe-eval`, and focused frontend/browser acceptance in addition to the six repository phase quality gates. The [review disposition](../control-center-tree-ux-wireframe-plan.md#review-disposition--2026-10-07) qualifies recommendations; documentation and prototypes do not establish implementation acceptance.
 - Safe distribution packaging (Cython / C-extensions / PyInstaller binary sidecar per publication strategy).
 
 ---
@@ -671,6 +706,16 @@ Before declaring any core platform capability production-ready, the implementati
 - **Tamper Evidence:** Hash chain verification detects tampered event records or mismatched signatures.
 
 ### 5. Native Controlled Execution & Sandboxing
+
+**Phase 16 planning amendment (2026-10-05):** implement the explicitly authorized
+[native validation mode](../phase-16-native-validation-mode-plan.md) before Phase
+16 acceptance. Trusted Windows projects must support the complete guarded
+workflow without Docker/WSL/Linux. Restricted execution remains the default for
+untrusted projects; container validation remains an optional policy-selected
+backend. Native execution follows invariant 34 and must not claim filesystem or
+network isolation it cannot enforce. The amendment preserves exact ChangeSet
+approval, policy precedence, provenance, fencing, and source-change gates.
+
 - **Directory Confinement:** Disallowed paths and symlink traversal outside staging workspace blocked.
 - **Environment Sanitization:** Workstation secrets, tokens, and API keys stripped from subprocess environments.
 - **Command & Argument Allowlisting:** Disallowed shell binaries or unvalidated arguments rejected.

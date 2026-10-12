@@ -1,11 +1,13 @@
 import json
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from migration_agent.cli import app
 
 runner = CliRunner()
+pytestmark = pytest.mark.usefixtures("cli_workflow_authorization")
 
 
 def test_cli_analyze_command_default_gemini(tmp_path: Path) -> None:

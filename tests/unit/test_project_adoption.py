@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from typer.testing import CliRunner
 
 from migration_agent.adapters import (
@@ -131,6 +132,97 @@ def test_cli_init_command(tmp_path: Path) -> None:
     assert data["status"] == "initialized"
     assert data["project_id"] == "custom-cli-id"
     assert (target / ".agent" / "manifest.json").is_file()
+
+
+def test_cli_external_init_is_read_only_and_idempotent(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "source.js").write_bytes(b"untouched\r\n")
+    project = tmp_path / "project"
+    args = [
+        "init",
+        str(project),
+        "--source",
+        str(source),
+        "--state-dir",
+        str(tmp_path / "state"),
+        "--staging-root",
+        str(tmp_path / "staging"),
+        "--id",
+        "pilot",
+    ]
+    result = runner.invoke(app, args)
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)
+    assert data["migration_session"]["source_root"] == str(source.resolve())
+    binding = project / ".agent" / "migration-session.json"
+    original = binding.read_bytes()
+    assert b"\r" not in original
+    assert runner.invoke(app, args).exit_code == 0
+    assert binding.read_bytes() == original
+    assert list(source.iterdir()) == [source / "source.js"]
+    assert (source / "source.js").read_bytes() == b"untouched\r\n"
+    assert not (tmp_path / "state").exists()
+    assert not (tmp_path / "staging").exists()
+
+
+@pytest.mark.parametrize("other", ["project", "state", "staging"])
+@pytest.mark.parametrize("relation", ["same", "child", "parent"])
+def test_external_init_rejects_source_overlap_before_writes(
+    tmp_path: Path, other: str, relation: str
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    paths = {name: tmp_path / name for name in ("project", "state", "staging")}
+    paths[other] = {"same": source, "child": source / "nested", "parent": tmp_path}[relation]
+    with pytest.raises(ValueError, match="UNSAFE_PATHS"):
+        _make_adoption_service().init_migration(
+            paths["project"], source, paths["staging"], paths["state"]
+        )
+    assert not list(source.iterdir())
+    assert not (tmp_path / "project").exists()
+
+
+@pytest.mark.parametrize("other", ["state", "staging"])
+def test_external_init_rejects_project_artifact_overlap(tmp_path: Path, other: str) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    paths = {name: tmp_path / name for name in ("project", "state", "staging")}
+    paths[other] = paths["project"] / other
+    with pytest.raises(ValueError, match="UNSAFE_PATHS"):
+        _make_adoption_service().init_migration(
+            paths["project"], source, paths["staging"], paths["state"]
+        )
+    assert not paths["project"].exists()
+
+
+def test_external_init_refuses_rebinding(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    project = tmp_path / "project"
+    service = _make_adoption_service()
+    service.init_migration(project, source, tmp_path / "staging", tmp_path / "state")
+    before = {p.relative_to(project): p.read_bytes() for p in project.rglob("*") if p.is_file()}
+    with pytest.raises(ValueError, match="SESSION_CONFLICT"):
+        service.init_migration(project, source, tmp_path / "staging2", tmp_path / "state")
+    assert before == {
+        p.relative_to(project): p.read_bytes() for p in project.rglob("*") if p.is_file()
+    }
+
+
+def test_external_init_requires_existing_source(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    result = runner.invoke(app, ["init", str(project), "--source", str(tmp_path / "missing")])
+    assert result.exit_code == 1
+    assert not project.exists()
+
+
+def test_init_artifact_options_require_source(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    result = runner.invoke(app, ["init", str(project), "--state-dir", str(tmp_path / "state")])
+    assert result.exit_code == 1
+    assert "MISSING_SOURCE" in result.output
+    assert not project.exists()
 
 
 def test_cli_adopt_command(tmp_path: Path) -> None:

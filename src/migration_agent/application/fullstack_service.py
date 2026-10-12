@@ -150,7 +150,14 @@ class FullStackDiscoveryService:
             all_nodes_list.extend(nodes)
             all_intra_edges_list.extend(edges)
 
-        unique_nodes = {node.node_id: node for node in all_nodes_list}
+        unique_nodes: dict[str, CrossDomainNode] = {}
+        for node in all_nodes_list:
+            existing = unique_nodes.get(node.node_id)
+            if existing is not None and existing != node:
+                raise ValueError(
+                    "DISCOVERY_ID_CONFLICT: adapters returned conflicting nodes with the same ID."
+                )
+            unique_nodes[node.node_id] = node
         sorted_nodes = tuple(
             sorted(unique_nodes.values(), key=lambda n: (n.domain.value, n.node_id))
         )

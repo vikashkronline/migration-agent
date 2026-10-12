@@ -239,10 +239,20 @@ class FakeAgentRuntime(AgentRuntimePort, SpecialistRuntimePort):
                 )
             ]
 
-            matching_template = next(
-                (t for t in template_files if Path(t).stem == Path(comp_path).stem),
-                None,
-            )
+            p = Path(comp_path)
+            if p.stem == "component":
+                comp_name = p.parent.name
+                template_candidate = f"{p.parent.as_posix()}/template.hbs"
+                matching_template = next(
+                    (t for t in template_files if t == template_candidate),
+                    None,
+                )
+            else:
+                comp_name = p.stem
+                matching_template = next(
+                    (t for t in template_files if Path(t).stem == comp_name),
+                    None,
+                )
             if matching_template:
                 references.append(
                     EvidenceReference(
@@ -254,7 +264,6 @@ class FakeAgentRuntime(AgentRuntimePort, SpecialistRuntimePort):
                     )
                 )
 
-            comp_name = Path(comp_path).stem
             findings.append(
                 AnalysisFinding(
                     id=f"finding-component-{comp_name}",

@@ -1,0 +1,6 @@
+
+> control-center@0.1.0 format:check
+> prettier --check src *.json *.mjs vitest.config.ts tests/*.cjs
+
+Checking formatting...
+All matched files use Prettier code style!

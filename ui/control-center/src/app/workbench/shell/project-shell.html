@@ -1,0 +1,154 @@
+<a class="visually-hidden-focusable btn btn-primary m-2" href="#workspace">Skip to workspace</a>
+<header class="d-flex flex-wrap align-items-center gap-3 p-3 border-bottom bg-body">
+  @if (store.session()?.access?.capabilities?.includes('access.read')) {
+  <a class="btn btn-sm btn-outline-secondary" routerLink="access">Users and access</a>
+  } @if (workflowReadable()) {
+  <a
+    class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
+    routerLink="wizard/foundation"
+  >
+    <cc-icon name="boxes" size="0.9em" />
+    <span>Stack & Foundation</span>
+  </a>
+  }
+  <div class="d-flex align-items-center gap-2">
+    <cc-icon name="boxes" size="1.25em" class="text-primary" />
+    <strong class="text-primary">Agent Platform</strong>
+    <span class="text-body-secondary">|</span>
+    <span>Project Control Center</span>
+  </div>
+  <div class="ms-auto small text-body-secondary">
+    @if (store.session(); as session) { {{session.actor || 'Local session'}} · {{session.assurance}}
+    @if (session.access; as access) { · {{access.roles.join(', ') || 'No project role'}} } } @else {
+    Local session · Permissions pending }
+  </div>
+  <span
+    class="badge d-inline-flex align-items-center gap-1"
+    [class.text-bg-success]="store.fresh()"
+    [class.text-bg-warning]="!store.fresh()"
+  >
+    <cc-icon [name]="store.fresh() ? 'check-circle-fill' : 'hourglass-split'" size="0.85em" />
+    <span
+      >{{!workflowReadable() ? 'Settings session' : store.fresh() ? 'Current snapshot' :
+      'Disconnected / synchronizing'}}</span
+    >
+  </span>
+  @if (store.lastChecked(); as checked) {
+  <small class="text-body-secondary d-inline-flex align-items-center gap-1">
+    <cc-icon name="clock-history" size="0.85em" />
+    <span>Checked {{checked | date:'mediumTime'}}</span>
+  </small>
+  }
+  <button
+    class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
+    (click)="toggleTheme()"
+    [attr.title]="'Switch to ' + (theme.theme() === 'dark' ? 'light' : 'dark') + ' theme'"
+  >
+    <cc-icon [name]="theme.theme() === 'dark' ? 'sun-fill' : 'moon-stars-fill'" size="0.9em" />
+    <span>{{theme.theme() === 'dark' ? 'Light mode' : 'Dark mode'}}</span>
+  </button>
+  <a
+    class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
+    routerLink="health"
+  >
+    <cc-icon name="heart-pulse" size="0.9em" />
+    <span>Platform health</span>
+  </a>
+  @if (store.session()?.access?.capabilities?.includes('configuration.read')) {
+  <a class="btn btn-sm btn-outline-secondary" routerLink="settings/overview">Settings</a>
+  }
+</header>
+<div class="container-fluid">
+  <div class="row">
+    @if (workflowReadable()) {
+    <aside class="d-none d-md-block col-md-3 col-xl-2 p-3 border-end bg-body-tertiary">
+      <cc-project-explorer (selected)="select()" />
+    </aside>
+    }
+    <main
+      id="workspace"
+      class="col-12 p-3 p-lg-4"
+      [class.col-md-9]="workflowReadable()"
+      [class.col-xl-10]="workflowReadable()"
+      tabindex="-1"
+    >
+      @if (workflowReadable()) {
+      <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+        <button class="btn btn-outline-primary d-md-none" (click)="drawerOpen.set(true)">
+          Project navigation
+        </button>
+        <nav class="small text-break" aria-label="Breadcrumb">
+          <a routerLink="items/project/summary">{{store.projectLabel()}}</a>@for (node of
+          store.breadcrumb(); track node.node_id) {<span> › </span
+          ><a [routerLink]="['items', node.node_id]">{{node.label}}</a>}
+        </nav>
+        <div class="ms-auto d-flex gap-2">
+          <button
+            class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
+            [attr.aria-pressed]="store.attention()"
+            (click)="attention()"
+          >
+            <cc-icon name="funnel" size="0.85em" />
+            <span>Attention</span>
+          </button>
+          <a
+            class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
+            routerLink="runs"
+          >
+            <cc-icon name="play-circle" size="0.85em" />
+            <span>Runs</span>
+          </a>
+          <a
+            class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
+            [routerLink]="['items', store.selection().nodeId, 'ask']"
+          >
+            <cc-icon name="chat-dots" size="0.85em" />
+            <span>Ask</span>
+          </a>
+        </div>
+      </div>
+      @if (store.treeError(); as error) {<cc-feedback
+        title="Project state needs attention"
+        [message]="error.message"
+        retryLabel="Reconnect / refresh"
+        (retry)="store.refresh()"
+      />} @for (warning of store.warnings(); track warning) {<cc-feedback
+        title="Project-work definition needs attention"
+        [message]="warning"
+      />} @if (store.command(); as operation) {
+      <section class="alert alert-info" role="status">
+        <strong>{{operation.label}}</strong>
+        @switch (operation.outcome) { @case ('pending') {
+        <span> In progress; workbench polling journal.</span>
+        } @case ('unknown') {
+        <span>
+          Execution status is unknown. Recover the same request before sending another
+          command.</span
+        >
+        } @case ('rejected') {
+        <span>
+          Operation rejected: {{operation.receipt?.message || 'Server rejected the command.'}}</span
+        >
+        } @case ('received') {
+        <span> Operation received: {{operation.receipt?.status ?? 'QUEUED'}}.</span>
+        } } @if (operation.receipt?.operation_id; as opId) {
+        <p class="small mb-0 mt-1">
+          Operation ID: <code>{{opId}}</code> ({{operation.receipt?.status}}).
+        </p>
+        }
+      </section>
+      } }
+      <router-outlet />
+    </main>
+  </div>
+</div>
+@if (workflowReadable()) {
+<cc-modal-dialog
+  label="Project navigation"
+  [open]="drawerOpen()"
+  [drawer]="true"
+  (dismissed)="drawerOpen.set(false)"
+>
+  <cc-project-explorer (selected)="select()" />
+</cc-modal-dialog>
+}

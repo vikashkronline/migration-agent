@@ -1,22 +1,19 @@
 """Application service managing Control API interactions, diffs, approvals, and runs."""
 
 import difflib
-import hashlib
-import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
+from migration_agent.application.doctor import collect_diagnostics
 from migration_agent.domain import (
     ApplyRunPayload,
-    ApprovalSignature,
     ApprovePlanPayload,
     DiffFileView,
     DiffReviewView,
     DoctorView,
     GraphView,
     LearningsView,
-    PlanStatus,
     PlanView,
     RunDetailView,
     RunSummaryView,
@@ -58,20 +55,17 @@ class ControlApiService:
 
     def get_health(self) -> DoctorView:
         """Collect platform health diagnostics."""
-        python_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
-        checks: list[dict[str, Any]] = [
-            {
-                "name": "python",
-                "status": "pass" if sys.version_info >= (3, 12) else "fail",
-                "details": {"actual": python_ver, "minimum": "3.12"},
-            },
+        diagnostics = collect_diagnostics()
+        checks = list(cast(list[dict[str, Any]], diagnostics.get("checks", [])))
+        checks.append(
             {
                 "name": "control_api",
                 "status": "pass",
                 "details": {"binding": "127.0.0.1", "version": "v1"},
-            },
-        ]
-        return DoctorView(status="ok", checks=checks)
+            }
+        )
+        status = str(diagnostics.get("status", "ok"))
+        return DoctorView(status=status, checks=checks)
 
     def list_runs(self, target_root: Path) -> list[RunSummaryView]:
         """List historical and active migration runs."""
@@ -286,108 +280,12 @@ class ControlApiService:
         )
 
     def approve_plan(
-        self,
-        plan_id: str,
-        payload: ApprovePlanPayload,
-        target_root: Path,
+        self, plan_id: str, payload: ApprovePlanPayload, target_root: Path
     ) -> PlanView:
-        """Approve a migration plan with cryptographic binding and idempotency."""
-        if payload.request_id and payload.request_id in self._idempotency_cache:
-            cached = self._idempotency_cache[payload.request_id]
-            if isinstance(cached, PlanView):
-                return cached
+        raise ValueError("HUMAN_CHANNEL_REQUIRED: use trusted exact ChangeSet review.")
 
-        plan = None
-        if self.checkpoint_port:
-            plan = self.checkpoint_port.get_plan(plan_id)
-        if not plan and self.governance_port:
-            plan = self.governance_port.load_plan(str(target_root), plan_id)
-
-        if not plan:
-            raise KeyError(f"Plan '{plan_id}' not found.")
-
-        policy_digest = ""
-        if self.governance_port:
-            try:
-                policy_digest = self.governance_port.get_policy_digest(str(target_root))
-            except Exception:
-                policy_digest = ""
-
-        plan_digest = compute_plan_digest(plan)
-        policy_str = (
-            policy_digest
-            if policy_digest
-            else "sha256:0000000000000000000000000000000000000000000000000000000000000000"
-        )
-        sig_hash = hashlib.sha256(
-            f"{payload.actor}:{plan_digest}:{policy_str}".encode()
-        ).hexdigest()
-        signature = ApprovalSignature(
-            actor=payload.actor,
-            plan_digest=plan_digest,
-            policy_digest=policy_str,
-            signature=f"sig:{sig_hash}",
-        )
-
-        updated_plan = plan.model_copy(
-            update={
-                "status": PlanStatus.APPROVED,
-                "approval": signature,
-            }
-        )
-
-        if self.checkpoint_port:
-            self.checkpoint_port.save_plan(updated_plan)
-        if self.governance_port:
-            self.governance_port.export_plan(str(target_root), updated_plan)
-
-        self._broadcast(
-            "PLAN_APPROVED",
-            {
-                "plan_id": plan_id,
-                "actor": payload.actor,
-                "plan_digest": plan_digest,
-                "notes": payload.notes,
-            },
-        )
-
-        view = self.get_plan(plan_id, target_root)
-        if payload.request_id:
-            self._idempotency_cache[payload.request_id] = view
-        return view
-
-    def apply_run(
-        self,
-        run_id: str,
-        payload: ApplyRunPayload,
-        target_root: Path,
-    ) -> RunDetailView:
-        """Execute controlled apply for a staged run."""
-        if payload.request_id and payload.request_id in self._idempotency_cache:
-            cached = self._idempotency_cache[payload.request_id]
-            if isinstance(cached, RunDetailView):
-                return cached
-
-        if not self.checkpoint_port:
-            raise KeyError(f"Run '{run_id}' not found.")
-
-        record = self.checkpoint_port.get_run_record(run_id)
-        if not record:
-            raise KeyError(f"Run '{run_id}' not found.")
-
-        self._broadcast(
-            "RUN_APPLIED",
-            {
-                "run_id": run_id,
-                "actor": payload.actor,
-                "status": "APPLIED",
-            },
-        )
-
-        view = self.get_run(run_id, target_root)
-        if payload.request_id:
-            self._idempotency_cache[payload.request_id] = view
-        return view
+    def apply_run(self, run_id: str, payload: ApplyRunPayload, target_root: Path) -> RunDetailView:
+        raise ValueError("EXACT_APPLY_REQUIRED: use the guarded workbench action.")
 
     def get_graph(self, target_root: Path) -> GraphView:
         """Generate full-stack dependency graph and Mermaid flowchart."""

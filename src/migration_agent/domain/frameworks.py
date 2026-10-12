@@ -47,6 +47,7 @@ class SourceComponentBundle(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     component_name: str = Field(min_length=1)
+    component_namespace: str = ""
     source_files: tuple[str, ...] = Field(default_factory=tuple)
     component_source: str = Field(default="")
     template_source: str = Field(default="")

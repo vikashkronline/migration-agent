@@ -134,17 +134,15 @@ def test_pipeline_auto_approve_end_to_end_apply(temp_workspace: Path, pipeline_e
         output_dir=state_dir / "reports",
     )
 
-    assert result.status == "ok"
-    assert len(result.applied_paths) > 0
-    assert result.backup_snapshot_path is not None
-    assert Path(result.backup_snapshot_path).is_dir()
+    assert result.status == "approval_required"
+    assert not result.applied_paths
+    assert result.backup_snapshot_path is None
 
     # Target files must now exist in workspace
     target_comp = (
         temp_workspace / "src" / "app" / "components" / "user-badge" / "user-badge.component.ts"
     )
-    assert target_comp.is_file()
-    assert "export class UserBadgeComponent" in target_comp.read_text(encoding="utf-8")
+    assert not target_comp.exists()
 
 
 def test_pipeline_user_aborted_on_rejection(temp_workspace: Path, pipeline_env) -> None:
@@ -176,13 +174,15 @@ def test_pipeline_validation_and_reporting(temp_workspace: Path, pipeline_env) -
         output_dir=state_dir / "reports",
     )
 
-    assert result.status == "ok"
+    assert result.status == "approval_required"
     assert result.validation_status == "PASSED"
     assert result.json_report_path is not None
     assert Path(result.json_report_path).is_file()
 
 
-def test_cli_migrate_dry_run(temp_workspace: Path, tmp_path: Path) -> None:
+def test_cli_migrate_dry_run(
+    temp_workspace: Path, tmp_path: Path, cli_workflow_authorization
+) -> None:
     runner = CliRunner()
     state_dir = tmp_path / "cli_state"
 

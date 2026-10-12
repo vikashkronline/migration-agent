@@ -13,6 +13,7 @@ from migration_agent.application.fullstack_service import FullStackDiscoveryServ
 from migration_agent.domain import DependencyRelation, MigrationDomain
 
 FIXTURE_PATH = Path("tests/fixtures/fullstack-ecommerce-mini")
+FRONTEND_NODE_ID = "frontend:file:frontend/src/user-card.component.ts"
 
 
 def test_fullstack_discovery_on_synthetic_fixture() -> None:
@@ -31,7 +32,7 @@ def test_fullstack_discovery_on_synthetic_fixture() -> None:
     node_ids = {n.node_id for n in inventory.graph.nodes}
 
     # Frontend
-    assert "frontend:user-card.component" in node_ids
+    assert FRONTEND_NODE_ID in node_ids
     # Backend
     assert "api:GET:/api/users" in node_ids
     assert "api:POST:/api/orders" in node_ids
@@ -51,7 +52,7 @@ def test_fullstack_discovery_on_synthetic_fixture() -> None:
 
     # Frontend calls Backend API
     assert (
-        "frontend:user-card.component",
+        FRONTEND_NODE_ID,
         DependencyRelation.INVOKES_API,
         "api:GET:/api/users",
     ) in edge_triples
@@ -104,12 +105,35 @@ def test_fullstack_impact_analysis_on_fixture() -> None:
     assert impact.target_domain == MigrationDomain.DATABASE_SCHEMA
 
     assert "api:GET:/api/users" in impact.dependents
-    assert "frontend:user-card.component" in impact.dependents
+    assert FRONTEND_NODE_ID in impact.dependents
     assert "db:orders" in impact.dependents
 
     assert MigrationDomain.FRONTEND in impact.impacted_domains
     assert MigrationDomain.BACKEND_API in impact.impacted_domains
     assert MigrationDomain.DATABASE_SCHEMA in impact.impacted_domains
+
+
+def test_discovery_refuses_conflicting_adapter_node_ids(tmp_path: Path) -> None:
+    from unittest.mock import Mock
+
+    from migration_agent.domain import CrossDomainNode
+
+    node = CrossDomainNode(
+        node_id="duplicate",
+        domain=MigrationDomain.FRONTEND,
+        name="first",
+        entity_type="component",
+        path="app/first.js",
+    )
+    adapter = Mock()
+    adapter.discover_nodes.return_value = (
+        node,
+        node.model_copy(update={"path": "app/second.js"}),
+    )
+    adapter.discover_edges.return_value = ()
+    service = FullStackDiscoveryService(SafeFilesystemInspector(), (adapter,))
+    with pytest.raises(ValueError, match="DISCOVERY_ID_CONFLICT"):
+        service.discover(tmp_path)
 
 
 def test_fullstack_reporting_writer(tmp_path: Path) -> None:

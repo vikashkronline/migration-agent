@@ -69,3 +69,33 @@ cryptographic binding.
   integration with native ssh-agent/gpg binaries is expanded in later phases.
 - Specialist multi-agent role decomposition and evaluation-driven subagents are deferred to Phase 8.
 
+
+## Native validation trust boundary
+
+Native is explicitly trusted account execution, not a kernel filesystem or egress
+sandbox. Positive environments and staging fingerprints reduce accidental exposure
+and detect input drift; they do not remove account permissions. Windows jobs
+supervise inherited descendants and kill on supervisor handle close; services
+outside the job remain outside that guarantee. Linux group supervision differs.
+Unsupported strict controls fail closed. Human consent binds the base, policy,
+fixed profiles, installed toolchain/dependencies and bounded repair scope; separate
+exact source approval remains mandatory. Mode B retains same-account limitations;
+Mode A checks an active external authority. [Precise limits](native-validation.md).
+
+## Browser validation boundaries
+
+Page content and AI visual verdicts are untrusted. Captured PNG hashes, dimensions,
+complete coverage, required rules and objective failures are checked deterministically.
+Source/build/config/tool/consent drift invalidates browser evidence and approval.
+Typed actions permit no arbitrary JavaScript/shell. Source reference navigation is
+read-only; separately authorized synthetic backend fixtures use explicit loopback
+origins. Screenshots can contain sensitive data: use non-secret synthetic cases.
+Direct provider disclosure is disabled by default. The explicitly authorized adapter
+requires trusted launcher opt-in and binds fixed destination/model/payload limits
+into execution policy and native human consent. It preflights the complete export,
+rejects recognized credential-shaped text and validates every image hash and rule
+citation. These checks cannot recognize secrets in pixels or arbitrary prose; use
+synthetic test cases. In-flight requests cannot be recalled on revocation. SDK errors
+are sanitized, and complete reviews alone are persisted. Host UI review is not human source
+approval. Native supervision retains account permissions; container worker mounts
+preserve the existing isolation controls. [Operations](browser-ui-ux-validation.md).

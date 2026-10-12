@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "default_mode": "MODE_B",
+  "protected_paths": [
+    ".agent/**",
+    ".git/**"
+  ],
+  "max_step_files": 10,
+  "require_approval_for_apply": true,
+  "execution_mode": "trusted",
+  "native_network": "host",
+  "native_filesystem_isolation": false,
+  "native_hard_resource_limits": false
+}

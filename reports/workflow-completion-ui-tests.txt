@@ -1,0 +1,86 @@
+
+> control-center@0.1.0 test
+> ng test --watch=false
+
+Using Vitest configuration file: C:\Projects\New folder\migration-agent\ui\control-center\vitest.config.ts
+> Building...
+√ Building...
+Initial chunk files                                 | Names                                            |  Raw size
+styles.css                                          | styles                                           | 277.08 kB | 
+chunk-MK3PXSA2.js                                   | -                                                | 129.50 kB | 
+chunk-5R46HKTG.js                                   | -                                                | 104.52 kB | 
+chunk-HF7CKUVB.js                                   | -                                                |  78.56 kB | 
+chunk-CLI5G2K2.js                                   | -                                                |  45.27 kB | 
+chunk-32OZJODX.js                                   | -                                                |  30.86 kB | 
+chunk-ZHJNY4OA.js                                   | -                                                |  17.31 kB | 
+chunk-GUOKTQ6Q.js                                   | -                                                |  16.66 kB | 
+chunk-HOXOO4EU.js                                   | -                                                |  12.54 kB | 
+chunk-4UCECL7E.js                                   | -                                                |  11.64 kB | 
+chunk-KFBS4JGK.js                                   | -                                                |   9.75 kB | 
+spec-app-workbench-wizard-stack-wizard.js           | spec-app-workbench-wizard-stack-wizard           |   8.34 kB | 
+spec-app-workbench-item-summary-summary-page.js     | spec-app-workbench-item-summary-summary-page     |   6.42 kB | 
+chunk-RPYIO44Y.js                                   | -                                                |   5.94 kB | 
+spec-app-workbench-item-artifacts-diff-viewer.js    | spec-app-workbench-item-artifacts-diff-viewer    |   5.92 kB | 
+spec-app-workbench-settings-settings-page.js        | spec-app-workbench-settings-settings-page        |   5.72 kB | 
+spec-app-workbench-access-access-page.js            | spec-app-workbench-access-access-page            |   5.41 kB | 
+chunk-7TJ5TC2O.js                                   | -                                                |   5.26 kB | 
+chunk-XXFEGSJ5.js                                   | -                                                |   5.09 kB | 
+spec-app-workbench-wizard-stack-wizard-api.js       | spec-app-workbench-wizard-stack-wizard-api       |   4.84 kB | 
+chunk-RSTWSNOR.js                                   | -                                                |   4.75 kB | 
+spec-app-workbench-workbench-store.js               | spec-app-workbench-workbench-store               |   4.66 kB | 
+chunk-Y72IZTWS.js                                   | -                                                |   4.31 kB | 
+chunk-GB6EF3IE.js                                   | -                                                |   4.30 kB | 
+chunk-CZQIXVNX.js                                   | -                                                |   4.19 kB | 
+spec-app-core-routing-project-guard.js              | spec-app-core-routing-project-guard              |   3.67 kB | 
+spec-app-workbench-actions-workflow-actions.js      | spec-app-workbench-actions-workflow-actions      |   3.39 kB | 
+spec-app-workbench-workbench-api.js                 | spec-app-workbench-workbench-api                 |   2.67 kB | 
+chunk-HUOBS6N7.js                                   | -                                                |   2.60 kB | 
+chunk-M2R23LHU.js                                   | -                                                |   2.53 kB | 
+spec-app-workbench-item-ask-ask-page.js             | spec-app-workbench-item-ask-ask-page             |   2.04 kB | 
+chunk-PI2FDXHM.js                                   | -                                                |   1.89 kB | 
+spec-app-shared-code-line-code-line.js              | spec-app-shared-code-line-code-line              |   1.73 kB | 
+chunk-23DNPHGF.js                                   | -                                                |   1.72 kB | 
+spec-app-workbench-item-artifacts-artifacts-page.js | spec-app-workbench-item-artifacts-artifacts-page |   1.46 kB | 
+init-testbed.js                                     | init-testbed                                     |   1.21 kB | 
+vitest-mock-patch.js                                | vitest-mock-patch                                | 974 bytes | 
+spec-app-shared-terminal-command.js                 | spec-app-shared-terminal-command                 | 680 bytes | 
+chunk-AXKUG6EH.js                                   | -                                                | 397 bytes | 
+
+                                                    | Initial total                                    | 835.80 kB
+
+Lazy chunk files                                    | Names                                            |  Raw size
+chunk-NYAFAARJ.js                                   | project-shell                                    |  51.75 kB | 
+chunk-DAMHINXW.js                                   | decision-page                                    |  11.72 kB | 
+chunk-OHVLDMEW.js                                   | runs-page                                        |  11.26 kB | 
+chunk-MLP2SOQU.js                                   | item-page                                        |  10.89 kB | 
+chunk-SCDPQPZN.js                                   | unavailable-page                                 |  10.36 kB | 
+chunk-X7UTKJ7G.js                                   | health-page                                      |   7.25 kB | 
+chunk-ZD5Z4KZ2.js                                   | checks-page                                      |   6.19 kB | 
+chunk-R3BRGCIU.js                                   | steps-page                                       |   4.09 kB | 
+chunk-CJH2Z3VZ.js                                   | activity-page                                    |   3.85 kB | 
+chunk-WC6CNCIK.js                                   | workbench-routes                                 |   3.82 kB | 
+chunk-GXUTQ2S7.js                                   | summary-page                                     | 392 bytes | 
+chunk-Y24UZM73.js                                   | stack-wizard                                     | 340 bytes | 
+chunk-JE3FKY7D.js                                   | ask-page                                         | 324 bytes | 
+chunk-BA3W3PFA.js                                   | artifacts-page                                   | 306 bytes | 
+chunk-WTHE3F65.js                                   | settings-page                                    | 304 bytes | 
+...and 2 more lazy chunks files. Use "--verbose" to show all the files.
+
+Application bundle generation complete. [17.275 seconds] - 2026-10-12T17:24:47.384Z
+
+▲ [WARNING] NG8113: JsonPipe is not used within the template of StackWizardPage [plugin angular-compiler]
+
+    src/app/workbench/wizard/stack-wizard.ts:46:45:
+      46 │   imports: [RouterLink, CcIcon, FormsModule, JsonPipe],
+         ╵                                              ~~~~~~~~
+
+
+
+ RUN  v4.1.11 C:/Projects/New folder/migration-agent/ui/control-center
+
+
+ Test Files  14 passed (14)
+      Tests  40 passed (40)
+   Start at  22:54:51
+   Duration  24.44s (transform 1.02s, setup 1.49s, import 1.57s, tests 1.90s, environment 18.56s)
+

@@ -1,5 +1,9 @@
 # Migration Agent Documentation Index
 
+- [Project configuration and Settings](project-configuration.md): owners and eligible users,
+  approved profiles, personal choices, checks, exact activation and recovery.
+- [Configuration implementation evidence](../plannings/agent-configuration-management-implementation-report.md).
+
 Welcome to the **Migration Agent Documentation**. This index is organized by stakeholder persona (**Project Owners**, **Architects & Tech Leads**, and **Developers & Engineers**) to help you quickly find the exact guides, technical references, and architectural specifications you need.
 
 ---
@@ -68,6 +72,8 @@ If you are designing migration workflows, establishing governance, or auditing p
 
 If you are actively running migrations, reviewing diffs, or troubleshooting code:
 
+- **[MCP inspection boundary and limits](phase-16a-remediation.md)** and **[host compatibility evidence](mcp-compatibility-spike.md)**: Phase 16A read tools, remediation, and pending primary-client verification.
+
 - **[Complete User Guide & CLI Reference](user-guide.md)**:
   Step-by-step practical guide covering all CLI commands:
   - `agent doctor`: Local setup and dependency health check.
@@ -79,7 +85,7 @@ If you are actively running migrations, reviewing diffs, or troubleshooting code
   - `agent decision` / `agent learning`: Recording ADRs and promoting solutions.
   - `agent eval --semantic`: Running semantic benchmarks against synthetic fixtures.
 - **[Local Control Center Web UI](user-guide.md#local-control-center-web-gui-agent-ui)**:
-  How to launch and use the browser-based dashboard on loopback (`http://127.0.0.1:8080`) for visual plan inspection, interactive step approval, and dependency graph visualization.
+  How to launch and use the browser dashboard on loopback (`http://127.0.0.1:8080`) for project progress, evidence inspection and guarded workflow requests, with separate human-terminal approval.
 
 ---
 
@@ -95,3 +101,52 @@ If you are actively running migrations, reviewing diffs, or troubleshooting code
 | **[phase-status.md](phase-status.md)** | Leads, Auditors | Implementation status, test suites, and quality gate evidence. |
 | **[threat-model.md](threat-model.md)** | Security, Architects | Risk analysis, isolation boundaries, and fail-closed security invariants. |
 | **[roadmap.md](roadmap.md)** | Owners, Leads | Project progression across Phases 0 through 15. |
+
+## Phase 16 shared host workflow
+
+See [client setup and operation](phase-16-client-setup.md), [workflow architecture](phase-16-host-workflow.md), and [smoke acceptance](phase-16-smoke-checklists.md). Host reasoning, staging, validation, exact human approval, and guarded apply use shared services. Historical Phase 16 limits are preserved; the subsequent common GUI is recorded separately below.
+
+The [remaining implementation report](../plannings/phase-16-remaining-implementation-report.md)
+records corrections, verification, and practical trust/isolation limits.
+
+## Native validation amendment
+
+- [Native validation operations and trust limits](native-validation.md)
+- [Phase 16 implementation report](../plannings/phase-16-native-validation-implementation-report.md)
+
+## Planned application UI/UX validation
+
+The [browser UI/UX workflow amendment](../plannings/browser-ui-ux-validation-workflow-plan.md)
+records mandatory AI browser review, responsive screenshots and repair, optional
+source comparison, and optional E2E validation last. See [operations](browser-ui-ux-validation.md)
+and the [implementation report](../plannings/browser-ui-ux-validation-implementation-report.md).
+Host/CLI review and opt-in standalone OpenAI/Gemini visual review are implemented;
+live acceptance is tracked separately.
+
+## Common Control Center implementation
+
+The [governed migration workflow](migration-workflow.md) is the current end-to-end
+guide: owner setup, signed architecture, foundation, role handoffs, grounded
+generation, validation, separate-target publication and recovery.
+
+The [GUI operations guide](control-center.md) describes the canonical project
+explorer, mobile drawer, evidence views and guarded action/terminal-review flow.
+The [implementation report](../plannings/control-center-implementation-report.md)
+records measured build/browser/backend verification and explicit product limits.
+
+The [optional project-work definition](project-work.md) supplies typed Git-owned
+foundation/module metadata linked to workflow evidence. The
+[Angular development guide](../ui/control-center/README.md) covers structure,
+local development and frontend quality gates.
+
+The [manual GUI testing guide](manual-gui-testing.md) covers direct executable
+launcher usage, new/existing projects, external state/staging roots, browser
+sessions and the current wheel-versus-standalone package distinction.
+
+The [standards review guide](standards-review.md) explains the opt-in G1 rule registry,
+exact staged standards report and pending manual review obligations.
+
+The [RBAC and user-management guide](rbac-and-users.md) covers signed owner bootstrap,
+Git-member import, finite roles, identity enrollment, revocation and trusted Git
+publication checks. [Implementation verification](../plannings/rbac-implementation-report.md)
+distinguishes offline gates from actual owner/server deployment.

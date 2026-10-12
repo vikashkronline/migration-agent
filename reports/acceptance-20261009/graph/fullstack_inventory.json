@@ -1,0 +1,104 @@
+{
+  "domains_detected": [
+    "frontend",
+    "infrastructure"
+  ],
+  "graph": {
+    "edges": [],
+    "nodes": [
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/templates/application.hbs",
+            "kind": "frontend_component",
+            "path": "app/templates/application.hbs",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": true
+        },
+        "name": "application",
+        "node_id": "frontend:application",
+        "path": "app/templates/application.hbs"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/components/suivre-taux-service-cql-parent/taux-service-cql/component.js",
+            "kind": "frontend_component",
+            "path": "app/features/components/suivre-taux-service-cql-parent/taux-service-cql/component.js",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": false
+        },
+        "name": "component",
+        "node_id": "frontend:component",
+        "path": "app/features/components/suivre-taux-service-cql-parent/taux-service-cql/component.js"
+      },
+      {
+        "domain": "frontend",
+        "entity_type": "component",
+        "evidence": [
+          {
+            "description": "Frontend component in app/features/suivre-taux-service-cql/template.hbs",
+            "kind": "frontend_component",
+            "path": "app/features/suivre-taux-service-cql/template.hbs",
+            "weight": 0.8
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "api_calls": [],
+          "is_template": true
+        },
+        "name": "template",
+        "node_id": "frontend:template",
+        "path": "app/features/suivre-taux-service-cql/template.hbs"
+      },
+      {
+        "domain": "infrastructure",
+        "entity_type": "container",
+        "evidence": [
+          {
+            "description": "Container specification in docker/sonar.Dockerfile",
+            "kind": "dockerfile",
+            "path": "docker/sonar.Dockerfile",
+            "weight": 0.9
+          }
+        ],
+        "line_number": null,
+        "metadata": {
+          "base_image": "indus/module-pipeline/front-sonar:release-5.2",
+          "exposed_ports": []
+        },
+        "name": "sonar.Dockerfile",
+        "node_id": "infra:dockerfile:docker",
+        "path": "docker/sonar.Dockerfile"
+      }
+    ]
+  },
+  "repository": {
+    "name": "penalite-frontend",
+    "root": "C:\\Projects\\ISOCEL\\Alice\\Ember\\penalite-frontend"
+  },
+  "schema_version": 1,
+  "summary": {
+    "backend_api": 0,
+    "database_schema": 0,
+    "frontend": 3,
+    "infrastructure": 1,
+    "total_edges": 0,
+    "total_nodes": 4
+  }
+}

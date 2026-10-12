@@ -3,11 +3,13 @@
 import json
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from migration_agent.cli import app
 
 runner = CliRunner()
+pytestmark = pytest.mark.usefixtures("cli_workflow_authorization")
 
 
 def _create_and_approve_plan(

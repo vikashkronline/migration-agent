@@ -6,6 +6,7 @@ from typing import TypeVar
 
 from pydantic import BaseModel
 
+from migration_agent.adapters.filesystem import read_repository_text, validate_repository_path
 from migration_agent.domain.knowledge import (
     ArchitecturalDecisionRecord,
     CandidateSolution,
@@ -20,21 +21,36 @@ T = TypeVar("T", bound=BaseModel)
 class GitKnowledgeAdapter(KnowledgePort):
     """Stores and loads Markdown documents with frontmatter in .agent/ subdirectories."""
 
-    def _resolve_subpath(self, project_root: str, subdir: str, item_id: str | None = None) -> Path:
-        root_path = Path(project_root).resolve()
-        target_dir = (root_path / ".agent" / subdir).resolve()
-
-        if not str(target_dir).startswith(str(root_path)):
-            raise ValueError(f"Target directory '{target_dir}' escapes project root '{root_path}'.")
-
-        target_dir.mkdir(parents=True, exist_ok=True)
+    def _resolve_subpath(
+        self, project_root: str, subdir: str, item_id: str | None = None, *, create: bool = False
+    ) -> Path:
+        raw_root = Path(project_root).absolute()
+        for parent in (raw_root, *raw_root.parents):
+            if parent.is_symlink() or parent.is_junction():
+                raise ValueError("KNOWLEDGE_PATH_UNSAFE: roots cannot traverse links.")
+        root_path = raw_root.resolve()
+        if create:
+            root_path.mkdir(parents=True, exist_ok=True)
+        if subdir not in {"challenges", "solutions", "learnings", "decisions"}:
+            raise ValueError("KNOWLEDGE_PATH_UNSAFE: unknown metadata directory.")
+        target_dir = (
+            validate_repository_path(root_path, f".agent/{subdir}")
+            if root_path.exists()
+            else root_path / ".agent" / subdir
+        )
+        if create:
+            target_dir.mkdir(parents=True, exist_ok=True)
 
         if item_id is not None:
             if "/" in item_id or "\\" in item_id or ".." in item_id:
                 raise ValueError(f"Invalid item ID '{item_id}' contains path traversal characters.")
-            file_path = (target_dir / f"{item_id}.md").resolve()
-            if not str(file_path).startswith(str(target_dir)):
-                raise ValueError(f"Target file '{file_path}' escapes directory '{target_dir}'.")
+            if not item_id or ":" in item_id or "\x00" in item_id:
+                raise ValueError("KNOWLEDGE_PATH_UNSAFE: invalid metadata identifier.")
+            file_path = (
+                validate_repository_path(root_path, f".agent/{subdir}/{item_id}.md")
+                if root_path.exists()
+                else target_dir / f"{item_id}.md"
+            )
             return file_path
 
         return target_dir
@@ -55,10 +71,17 @@ class GitKnowledgeAdapter(KnowledgePort):
         data = json.loads(meta_str)
         return model_cls.model_validate(data)
 
+    @staticmethod
+    def _read(project_root: str, path: Path) -> str:
+        root = Path(project_root).resolve()
+        return read_repository_text(root, path.relative_to(root).as_posix())
+
     # --- Challenges ---
 
     def save_challenge(self, project_root: str, challenge: ChallengeRecord) -> str:
-        file_path = self._resolve_subpath(project_root, "challenges", challenge.challenge_id)
+        file_path = self._resolve_subpath(
+            project_root, "challenges", challenge.challenge_id, create=True
+        )
         body = (
             f"**Category:** {challenge.category}\n"
             f"**Status:** {challenge.status}\n\n"
@@ -77,15 +100,19 @@ class GitKnowledgeAdapter(KnowledgePort):
         file_path = self._resolve_subpath(project_root, "challenges", challenge_id)
         if not file_path.is_file():
             return None
-        content = file_path.read_text(encoding="utf-8")
+        content = read_repository_text(
+            Path(project_root), file_path.relative_to(Path(project_root).resolve()).as_posix()
+        )
         return self._deserialize_document(content, ChallengeRecord)
 
     def list_challenges(self, project_root: str) -> list[ChallengeRecord]:
         directory = self._resolve_subpath(project_root, "challenges")
+        if not directory.is_dir():
+            return []
         results: list[ChallengeRecord] = []
         for file in sorted(directory.glob("*.md"), key=lambda p: p.stem):
             try:
-                content = file.read_text(encoding="utf-8")
+                content = self._read(project_root, file)
                 results.append(self._deserialize_document(content, ChallengeRecord))
             except (ValueError, json.JSONDecodeError):
                 continue
@@ -94,7 +121,9 @@ class GitKnowledgeAdapter(KnowledgePort):
     # --- Solutions ---
 
     def save_solution(self, project_root: str, solution: CandidateSolution) -> str:
-        file_path = self._resolve_subpath(project_root, "solutions", solution.solution_id)
+        file_path = self._resolve_subpath(
+            project_root, "solutions", solution.solution_id, create=True
+        )
         body = (
             f"**Challenge:** `{solution.challenge_id}`\n"
             f"**Status:** {solution.status}\n"
@@ -109,15 +138,17 @@ class GitKnowledgeAdapter(KnowledgePort):
         file_path = self._resolve_subpath(project_root, "solutions", solution_id)
         if not file_path.is_file():
             return None
-        content = file_path.read_text(encoding="utf-8")
+        content = self._read(project_root, file_path)
         return self._deserialize_document(content, CandidateSolution)
 
     def list_solutions(self, project_root: str) -> list[CandidateSolution]:
         directory = self._resolve_subpath(project_root, "solutions")
+        if not directory.is_dir():
+            return []
         results: list[CandidateSolution] = []
         for file in sorted(directory.glob("*.md"), key=lambda p: p.stem):
             try:
-                content = file.read_text(encoding="utf-8")
+                content = self._read(project_root, file)
                 results.append(self._deserialize_document(content, CandidateSolution))
             except (ValueError, json.JSONDecodeError):
                 continue
@@ -126,7 +157,9 @@ class GitKnowledgeAdapter(KnowledgePort):
     # --- Curated Learnings ---
 
     def save_learning(self, project_root: str, learning: CuratedLearning) -> str:
-        file_path = self._resolve_subpath(project_root, "learnings", learning.learning_id)
+        file_path = self._resolve_subpath(
+            project_root, "learnings", learning.learning_id, create=True
+        )
         body = (
             f"**Source Challenge:** `{learning.source_challenge_id}`\n"
             f"**Source Solution:** `{learning.source_solution_id}`\n"
@@ -147,15 +180,17 @@ class GitKnowledgeAdapter(KnowledgePort):
         file_path = self._resolve_subpath(project_root, "learnings", learning_id)
         if not file_path.is_file():
             return None
-        content = file_path.read_text(encoding="utf-8")
+        content = self._read(project_root, file_path)
         return self._deserialize_document(content, CuratedLearning)
 
     def list_learnings(self, project_root: str) -> list[CuratedLearning]:
         directory = self._resolve_subpath(project_root, "learnings")
+        if not directory.is_dir():
+            return []
         results: list[CuratedLearning] = []
         for file in sorted(directory.glob("*.md"), key=lambda p: p.stem):
             try:
-                content = file.read_text(encoding="utf-8")
+                content = self._read(project_root, file)
                 results.append(self._deserialize_document(content, CuratedLearning))
             except (ValueError, json.JSONDecodeError):
                 continue
@@ -164,7 +199,9 @@ class GitKnowledgeAdapter(KnowledgePort):
     # --- Architectural Decisions (ADRs) ---
 
     def save_decision(self, project_root: str, decision: ArchitecturalDecisionRecord) -> str:
-        file_path = self._resolve_subpath(project_root, "decisions", decision.decision_id)
+        file_path = self._resolve_subpath(
+            project_root, "decisions", decision.decision_id, create=True
+        )
         body = (
             f"**Status:** {decision.status}\n"
             f"**Decided By:** `{decision.decided_by}`\n\n"
@@ -184,15 +221,17 @@ class GitKnowledgeAdapter(KnowledgePort):
         file_path = self._resolve_subpath(project_root, "decisions", decision_id)
         if not file_path.is_file():
             return None
-        content = file_path.read_text(encoding="utf-8")
+        content = self._read(project_root, file_path)
         return self._deserialize_document(content, ArchitecturalDecisionRecord)
 
     def list_decisions(self, project_root: str) -> list[ArchitecturalDecisionRecord]:
         directory = self._resolve_subpath(project_root, "decisions")
+        if not directory.is_dir():
+            return []
         results: list[ArchitecturalDecisionRecord] = []
         for file in sorted(directory.glob("*.md"), key=lambda p: p.stem):
             try:
-                content = file.read_text(encoding="utf-8")
+                content = self._read(project_root, file)
                 results.append(self._deserialize_document(content, ArchitecturalDecisionRecord))
             except (ValueError, json.JSONDecodeError):
                 continue

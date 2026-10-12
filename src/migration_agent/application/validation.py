@@ -21,7 +21,17 @@ from migration_agent.domain import (
     ValidationResult,
     ValidationStatus,
     compute_changeset_digest,
+    compute_file_sha256,
 )
+from migration_agent.domain.canonical import compute_canonical_digest
+from migration_agent.domain.host_workflow import (
+    Lifecycle,
+    RepairFile,
+    RepairProposal,
+    WorkflowRecord,
+    workflow_diagnostic_digest,
+)
+from migration_agent.domain.validation import ValidationProfile
 from migration_agent.ports import (
     AuditEvent,
     AuditLogPort,
@@ -31,6 +41,7 @@ from migration_agent.ports import (
     SpecialistRuntimePort,
     WorkspacePort,
 )
+from migration_agent.ports.apply_approval import StagedWorkflowPort
 
 
 class ValidationService:
@@ -84,7 +95,7 @@ class BoundedRepairService:
 
     def __init__(
         self,
-        command_runner: CommandRunnerPort,
+        command_runner: CommandRunnerPort | None,
         workspace_adapter: WorkspacePort,
         validation_service: ValidationService | None = None,
         audit_logger: AuditLogPort | None = None,
@@ -95,14 +106,160 @@ class BoundedRepairService:
     ) -> None:
         self.command_runner = command_runner
         self.workspace_adapter = workspace_adapter
-        self.validation_service = validation_service or ValidationService(
-            command_runner, audit_logger
+        self.validation_service = validation_service or (
+            ValidationService(command_runner, audit_logger) if command_runner is not None else None
         )
         self.audit_logger = audit_logger
         self.checkpoint_store = checkpoint_store
         self.max_budget = max_budget
         self.specialist_runtime = specialist_runtime
         self.repair_engine = repair_engine or DeterministicRepairEngine()
+
+    def prepare_workflow(
+        self,
+        workflow: StagedWorkflowPort,
+        plan: MigrationPlan,
+        step_id: str,
+        skip_validation: bool,
+        max_attempts: int,
+    ) -> tuple[WorkflowRecord, list[RepairAttempt]]:
+        if not 0 <= max_attempts <= 10 or not 0 <= self.max_budget <= 10:
+            raise ValueError("REPAIR_BUDGET_INVALID: choose zero to ten repair attempts.")
+        record = workflow.prepare(plan.plan_id, step_id, skip_validation)
+        attempts: list[RepairAttempt] = []
+        candidate: ChangeSet | None = None
+        seen_failures: set[str] = set()
+        coordinator = (
+            SpecialistCoordinator(self.specialist_runtime, self.audit_logger)
+            if self.specialist_runtime is not None
+            else None
+        )
+        for index in range(1, min(max_attempts, self.max_budget) + 1):
+            if record.state != Lifecycle.VALIDATION_FAILED or not record.changeset_id:
+                break
+            failure = next(
+                (
+                    result
+                    for result in record.validation_results
+                    if result.status != ValidationStatus.PASSED
+                ),
+                None,
+            )
+            browser_failure = failure is None and record.browser_evidence is not None
+            if failure is None:
+                browser = record.browser_evidence
+                if browser is None or not browser.repairs or not browser.issues:
+                    break
+                failure = ValidationResult(
+                    command="browser UI/UX",
+                    profile=ValidationProfile.BUILD,
+                    status=ValidationStatus.FAILED,
+                    exit_code=1,
+                    sanitized_output="\n".join(browser.issues),
+                    diagnostics=browser.issues,
+                )
+            failure_key = compute_canonical_digest(
+                {
+                    "command": failure.command,
+                    "output": failure.sanitized_output,
+                    "diagnostics": failure.diagnostics,
+                }
+            )
+            if failure_key in seen_failures:
+                break
+            seen_failures.add(failure_key)
+            current = workflow.current_changeset(record.changeset_id)
+            scope = tuple(sorted(change.path for change in current.changes))
+            parsed = parse_diagnostics(failure.sanitized_output, failure.diagnostics)
+            if browser_failure and record.browser_evidence is not None:
+                proposed = {
+                    repair.path: repair.text.encode("utf-8")
+                    for repair in record.browser_evidence.repairs
+                }
+                if not set(proposed) <= set(scope):
+                    raise ValueError(
+                        "BROWSER_REPAIR_SCOPE_INVALID: proposed UI changes exceed scope."
+                    )
+                candidate = current.model_copy(
+                    update={
+                        "changes": tuple(
+                            change.model_copy(
+                                update={
+                                    "content_bytes": proposed[change.path],
+                                    "content_digest": compute_file_sha256(proposed[change.path]),
+                                }
+                            )
+                            if change.path in proposed
+                            else change
+                            for change in current.changes
+                        )
+                    }
+                )
+            else:
+                candidate = self.repair_engine.attempt_repair(parsed, current, scope)
+            if candidate is None and coordinator is not None:
+                diagnosis = coordinator.diagnose_repair(
+                    RepairDiagnosticianRequest(
+                        failing_result=failure,
+                        current_changeset=current,
+                        allowed_scope=scope,
+                        previous_attempts=tuple(attempts),
+                    ),
+                    run_id=plan.run_id,
+                )
+                if diagnosis is not None:
+                    actionable, target, details = (
+                        DeterministicRepairDiagnosticianAggregator.aggregate_diagnosis(
+                            diagnosis, scope
+                        )
+                    )
+                    if actionable and target:
+                        candidate = self.repair_engine.attempt_repair(
+                            parse_diagnostics(diagnosis.diagnostic_details, (details,)),
+                            current,
+                            (target,),
+                        )
+            if candidate is None:
+                break
+            prior = {change.path: change for change in current.changes}
+            files = tuple(
+                RepairFile(path=change.path, text=change.content_bytes.decode("utf-8"))
+                for change in sorted(candidate.changes, key=lambda change: change.path)
+                if change.content_bytes is not None
+                and (
+                    change.path not in prior
+                    or change.content_bytes != prior[change.path].content_bytes
+                )
+            )
+            if not files:
+                break
+            workflow.submit_repair(
+                RepairProposal(
+                    plan_id=plan.plan_id,
+                    step_id=step_id,
+                    changeset_id=current.changeset_id,
+                    diagnostic_digest=workflow_diagnostic_digest(record),
+                    files=files,
+                )
+            )
+            record = workflow.prepare(plan.plan_id, step_id, False)
+            attempt = RepairAttempt(
+                attempt_index=index,
+                cited_diagnostic=(
+                    failure.diagnostics[0]
+                    if failure.diagnostics
+                    else failure.sanitized_output[:512] or "Validation failed."
+                ),
+                previous_changeset_digest=current.changeset_digest,
+                new_changeset_digest=record.changeset_digest or current.changeset_digest,
+                status=ValidationStatus.PASSED
+                if record.state == Lifecycle.VALIDATION_PASSED
+                else ValidationStatus.FAILED,
+                summary="Repair submitted through the shared gate and revalidated.",
+            )
+            attempts.append(attempt)
+            self._record_attempt(plan.run_id, attempt)
+        return record, attempts
 
     def run_repair_loop(
         self,
@@ -119,6 +276,10 @@ class BoundedRepairService:
 
         Returns (success_flag, latest_changeset, repair_attempts, validation_results).
         """
+        if self.validation_service is None:
+            raise ValueError(
+                "SHARED_WORKFLOW_REQUIRED: use guarded prepare_workflow for native repair."
+            )
         budget = max_attempts if max_attempts is not None else self.max_budget
         staging_path = Path(staging_dir).resolve()
         current_changeset = initial_changeset

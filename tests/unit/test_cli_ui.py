@@ -45,10 +45,20 @@ def test_cli_ui_starts_and_stops_cleanly(tmp_path: Path) -> None:
                 "--token",
                 "custom-secret-token-1234567890",
                 "--no-open",
+                "--state-dir",
+                str(tmp_path.parent / "ui-state"),
+                "--staging-root",
+                str(tmp_path.parent / "ui-staging"),
             ],
         )
         assert result.exit_code == 0
         assert "http://127.0.0.1:8999" in result.stdout
-        assert "custom-secret-token-1234567890" in result.stdout
+        assert "custom-secret-token-1234567890" not in result.stdout
         assert "stopped" in result.stdout
         mock_open.assert_not_called()
+
+
+def test_cli_ui_rejects_overlapping_state_root(tmp_path: Path) -> None:
+    result = runner.invoke(app, ["ui", str(tmp_path), "--state-dir", str(tmp_path / "state")])
+    assert result.exit_code == 2
+    assert "STATE" in result.stderr or "ROOT" in result.stderr

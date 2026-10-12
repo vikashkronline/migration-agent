@@ -129,7 +129,7 @@ def test_path_traversal_prevention(tmp_path: Path) -> None:
         adapter.get_decision(str(tmp_path), "ADR/../../etc/passwd")
 
 
-def test_cli_knowledge_flow(tmp_path: Path) -> None:
+def test_cli_knowledge_flow(tmp_path: Path, cli_workflow_authorization) -> None:
     # 1. CLI challenge record
     res_ch = runner.invoke(
         app,

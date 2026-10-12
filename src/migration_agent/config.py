@@ -1,15 +1,21 @@
 """Environment-backed application configuration."""
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from migration_agent.domain.execution import ValidationMode
+from migration_agent.domain.inspection_access import InspectionCapability
+from migration_agent.domain.planning import AssuranceLevel
+from migration_agent.domain.workflow_access import WorkflowCapability
 
 
 class Settings(BaseSettings):
     """Configuration that is safe to load for local, offline commands."""
 
-    model_config = SettingsConfigDict(extra="ignore")
+    model_config = SettingsConfigDict(extra="ignore", populate_by_name=True)
 
     runtime_provider: str = Field(
         default="gemini",
@@ -45,6 +51,61 @@ class Settings(BaseSettings):
         default=None,
         validation_alias="AGENT_STAGING_ROOT",
         description="Root directory for isolated staging workspaces.",
+    )
+    final_target_root: Path | None = Field(default=None, validation_alias="AGENT_FINAL_TARGET_ROOT")
+    validation_catalog: Literal["node-v1", "node-vitest-v1", "node-angular-v21"] = "node-v1"
+
+    mcp_trusted_local_reads: bool = Field(
+        default=True,
+        validation_alias="AGENT_MCP_TRUSTED_LOCAL_READS",
+        description="Whether the trusted local stdio launcher grants Mode B inspection.",
+    )
+    mcp_read_capabilities: frozenset[InspectionCapability] = Field(
+        default=frozenset(InspectionCapability),
+        validation_alias="AGENT_MCP_READ_CAPABILITIES",
+        description="Inspection-only grants controlled by the local server launcher.",
+    )
+    mcp_workflow_capabilities: frozenset[WorkflowCapability] = Field(
+        default=frozenset(WorkflowCapability),
+        validation_alias="AGENT_MCP_WORKFLOW_CAPABILITIES",
+        description="Workflow grants resolved by the trusted local launcher; never tool arguments.",
+    )
+    trust_root: Path | None = Field(default=None, validation_alias="AGENT_TRUST_ROOT")
+    local_config_root: Path | None = Field(default=None, validation_alias="AGENT_LOCAL_CONFIG_ROOT")
+    validation_image: str | None = Field(default=None, validation_alias="AGENT_VALIDATION_IMAGE")
+    validation_mode: ValidationMode | None = Field(
+        default=None, validation_alias="AGENT_VALIDATION_MODE"
+    )
+    native_toolchain_root: Path | None = Field(
+        default=None, validation_alias="AGENT_NATIVE_TOOLCHAIN_ROOT"
+    )
+    native_dependencies_root: Path | None = Field(
+        default=None, validation_alias="AGENT_NATIVE_DEPENDENCIES_ROOT"
+    )
+
+    @property
+    def effective_validation_mode(self) -> ValidationMode:
+        return self.validation_mode or (
+            ValidationMode.CONTAINER if self.validation_image else ValidationMode.RESTRICTED
+        )
+
+    native_browser_path: Path | None = Field(
+        default=None, validation_alias="AGENT_NATIVE_BROWSER_PATH"
+    )
+    browser_validation_plan: Path | None = Field(
+        default=None, validation_alias="AGENT_BROWSER_VALIDATION_PLAN"
+    )
+    browser_review_mode: Literal["host", "provider"] = Field(
+        default="host", validation_alias="AGENT_BROWSER_REVIEW_MODE"
+    )
+    browser_provider_export: bool = Field(
+        default=False,
+        validation_alias="AGENT_BROWSER_PROVIDER_EXPORT",
+        description="Trusted launcher opt-in to disclose bounded visual evidence and staged code.",
+    )
+
+    apply_minimum_assurance: AssuranceLevel = Field(
+        default=AssuranceLevel.MODE_B, validation_alias="AGENT_APPLY_MINIMUM_ASSURANCE"
     )
 
     @property

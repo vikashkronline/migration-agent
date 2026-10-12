@@ -58,6 +58,8 @@ class RuleBasedPlanValidator:
                     f"Step '{step.step_id}' exceeds maximum expected files "
                     f"({len(step.expected_files)} > {self.max_step_files})."
                 )
+            if len(step.target_files) > self.max_step_files:
+                errors.append(f"Step '{step.step_id}' exceeds maximum declared target files.")
 
             # Check evidence against inventory
             if known_files is not None:

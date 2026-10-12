@@ -1,0 +1,53 @@
+@if (store.detail(); as detail) {
+<section class="card">
+  <div class="card-body">
+    <h2 class="h6">Exact decision scope</h2>
+    @if (detail.changeset_digest) {
+    <dl class="row small">
+      <dt class="col-sm-4">ChangeSet</dt>
+      <dd class="col-sm-8 text-break">{{detail.changeset_digest}}</dd>
+      <dt class="col-sm-4">Read-only source base</dt>
+      <dd class="col-sm-8 text-break">{{detail.base_revision ?? 'HEAD'}}</dd>
+      @if (detail.destination; as destination) {
+      <dt class="col-sm-4">Publication target</dt>
+      <dd class="col-sm-8 text-break">{{destination.root}}</dd>
+      <dt class="col-sm-4">Exact target base</dt>
+      <dd class="col-sm-8 text-break">{{destination.fingerprint}}</dd>
+      }
+      <dt class="col-sm-4">Policy</dt>
+      <dd class="col-sm-8 text-break">{{detail.policy_digest ?? 'None'}}</dd>
+      <dt class="col-sm-4">Validation</dt>
+      <dd class="col-sm-8 text-break">
+        @if (detail.validation_digest) { {{detail.validation_digest}} } @else if (detail.node.status
+        === 'VALIDATION_FAILED') {
+        <span class="badge text-bg-danger">Validation failed</span>
+        @if (detail.recovery_note) {
+        <span class="d-block small text-danger mt-1">{{detail.recovery_note}}</span>
+        } } @else { Unrun }
+      </dd>
+    </dl>
+    } @else {
+    <p>No exact staged artifact is available for review or approval.</p>
+    } @if (detail.node.status === 'VALIDATION_FAILED') {
+    <div class="alert alert-danger py-2 px-3 mb-3">
+      <strong>Approval blocked:</strong> Artifact failed validation. All required checks must pass
+      before this artifact can be reviewed or approved.
+    </div>
+    } @else {
+    <p>
+      Approve in your trusted human terminal after reviewing the exact artifact. The browser cannot
+      grant approval or sign on your behalf.
+    </p>
+    @if (detail.review_command.length) {
+    <details>
+      <summary>Trusted-terminal review arguments</summary>
+      <pre class="small mt-2">{{reviewArguments()}}</pre>
+    </details>
+    <p class="small mt-2 mb-0">
+      Pass these arguments to the installed CLI; this is a JSON argument list. Inspect the full diff
+      in your IDE or CLI review. Changed bytes require new evidence and approval.
+    </p>
+    } }
+  </div>
+</section>
+}

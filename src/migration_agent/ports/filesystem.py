@@ -13,7 +13,9 @@ class InspectionPolicy(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    max_text_file_bytes: int = Field(default=1_000_000, gt=0)
+    max_text_file_bytes: int = Field(default=5_000_000, gt=0)
+    max_text_files: int = Field(default=10_000, gt=0)
+    max_total_text_bytes: int = Field(default=50_000_000, gt=0)
     ignored_directory_names: tuple[str, ...] = (
         ".git",
         ".mypy_cache",

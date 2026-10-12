@@ -1,0 +1,23 @@
+{
+  "project_id": "repo-2560d91fc4f703524c931217",
+  "run_id": "run-616b5ba762b44c9ebbe5d55abcbfb71e",
+  "plan_id": "plan-616b5ba762b44c9ebbe5d55abcbfb71e",
+  "step_id": "component-1",
+  "changeset_id": "cs-ec7446fb",
+  "changeset_digest": "sha256:4594cc77f574cc4b60e0cac66218249bcc60509360d95553461c791afe362b29",
+  "policy_digest": "sha256:1e5e0d8230eb4a1d1f48a2c6392182c7261f5904e6dc553a14dda24302282897",
+  "base_revision": "a9fe20b4902e83b4b0c4ec85f621a89faf821fbb",
+  "worktree_fingerprint": "sha256:9ad5378068c9418ead313b2d707e239f1f6bcebd56fe549b870e61575c77b90f",
+  "validation_digest": "sha256:95b7023a2a366dcf28ef1ce340ed890ac70d38142fdf297e9e1d8aac7d0596c1",
+  "action": "APPLY_CHANGESET",
+  "actor": "vkumar",
+  "principal_id": "fixture",
+  "access_digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "assurance_level": "MODE_B",
+  "key_fingerprint": null,
+  "signature": "local-human:sha256:65e4bbf9de6e123b348db10c279d831f3eaa1fd899e3240deb24c60ab87564d2",
+  "nonce": "a944352a655c476aba0849008ecbd6a7",
+  "created_at": "2026-10-12T18:13:06.799617Z",
+  "expires_at": "2026-10-12T18:28:06.799617Z",
+  "destination": null
+}

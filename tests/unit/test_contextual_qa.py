@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from access_fixture import WorkflowAuthorizationFixture
 from typer.testing import CliRunner
 
 from migration_agent.adapters import (
@@ -85,7 +86,7 @@ def test_contextual_qa_bounds_envelope_and_audits_citations(tmp_path: Path) -> N
     assert cit_invalid.status == EvidenceStatus.NOT_IN_INVENTORY
 
 
-def test_cli_ask_command(tmp_path: Path) -> None:
+def test_cli_ask_command(tmp_path: Path, cli_workflow_authorization) -> None:
     governance = GitGovernanceAdapter()
     governance.ensure_governance_layout(str(tmp_path))
 
@@ -134,6 +135,7 @@ def test_control_api_contextual_qa_endpoint(tmp_path: Path) -> None:
         control_service=control_service,
         target_root=tmp_path,
         broadcaster=broadcaster,
+        authorization=WorkflowAuthorizationFixture(),
     )
 
     token = "test-token-1234567890123456"

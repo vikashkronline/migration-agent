@@ -1,0 +1,47 @@
+@if (store.detail(); as detail) {
+<section class="mt-4 border-top pt-3" aria-label="Available workflow actions">
+  <div class="d-flex flex-wrap gap-3">
+    @for (action of detail.actions; track action.kind) {
+    <div>
+      <button
+        class="btn btn-outline-primary d-inline-flex align-items-center gap-2"
+        [disabled]="!enabled() || !action.available"
+        (click)="confirm(action)"
+      >
+        <cc-icon [name]="getActionIcon(action.kind)" size="0.9em" />
+        <span>{{action.label}}</span>
+      </button>
+      <p class="small text-body-secondary mt-1">{{action.reason}}</p>
+    </div>
+    } @empty {
+    <p class="small">No executable action is available for this task.</p>
+    }
+  </div>
+</section>
+}
+<cc-modal-dialog
+  label="Confirm workflow action"
+  [open]="confirmation() !== null"
+  (dismissed)="confirmation.set(null)"
+>
+  @if (confirmation(); as draft) {
+  <h2 class="h5 d-flex align-items-center gap-2">
+    <cc-icon [name]="getActionIcon(draft.action.kind)" />
+    <span>{{draft.action.label}}?</span>
+  </h2>
+  <p class="text-break">
+    {{draft.detail.node.label}} · {{draft.detail.changeset_digest ?? 'No staged artifact'}}
+  </p>
+  <p>
+    Required consent and exact human approval must already be recorded. This request does not grant
+    missing authority.
+  </p>
+  <div class="d-flex gap-2">
+    <button class="btn btn-primary d-inline-flex align-items-center gap-1" (click)="execute()">
+      <cc-icon [name]="getActionIcon(draft.action.kind)" size="0.9em" />
+      <span>Request action</span>
+    </button>
+    <button class="btn btn-outline-secondary" (click)="confirmation.set(null)">Cancel</button>
+  </div>
+  }
+</cc-modal-dialog>

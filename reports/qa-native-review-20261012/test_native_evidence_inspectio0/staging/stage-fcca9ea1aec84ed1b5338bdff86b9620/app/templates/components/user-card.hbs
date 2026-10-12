@@ -1,0 +1,8 @@
+<article class="user-card">
+  <h2>{{@name}}</h2>
+  <button type="button" {{action "toggleDetails"}}>Details</button>
+  {{#if this.isExpanded}}
+    <p>{{@description}}</p>
+  {{/if}}
+</article>
+

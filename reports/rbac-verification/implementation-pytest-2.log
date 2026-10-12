@@ -1,0 +1,554 @@
+......................................................................F. [ 10%]
+......................................................................s. [ 20%]
+........................................................................ [ 31%]
+..........FF............................................................ [ 41%]
+............s........................F.................................. [ 52%]
+....................F................................F................s. [ 62%]
+........................................................................ [ 72%]
+........................................................................ [ 83%]
+..............................F........................................F [ 93%]
+.........F.F.............F..................                             [100%]
+================================== FAILURES ===================================
+________________ test_new_owner_and_member_key_need_possession ________________
+
+security = (<migration_agent.application.access.AccessService object at 0x000001CE07498FE0>, <cryptography.hazmat.bindings._rust.openssl.ed25519.Ed25519PrivateKey object at 0x000001CE0644AFB0>)
+
+    def test_new_owner_and_member_key_need_possession(security) -> None:
+        service, private = security
+        policy = service.view()
+        new_key = Ed25519PrivateKey.generate()
+        public = new_key.public_key().public_bytes(Encoding.OpenSSH, PublicFormat.OpenSSH).decode()
+        incoming = policy.members[0].model_copy(
+            update={
+                "principal_id": "incoming",
+                "os_identity": "test:incoming",
+                "public_key": public,
+                "key_fingerprint": service.signatures.fingerprint(public),
+            }
+        )
+        candidate = policy.model_copy(
+            update={
+                "revision": 2,
+                "previous_digest": policy.digest,
+                "members": (*policy.members, incoming),
+                "owners": ("incoming",),
+            }
+        )
+        proposal = service.propose(candidate)
+        outgoing = signed(proposal, private, policy.members[0])
+>       with pytest.raises(AccessDenied, match="ENROLLMENT_REQUIRED"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: Regex pattern did not match.
+E         Expected regex: 'ENROLLMENT_REQUIRED'
+E         Actual message: 'OWNER_CONSENT_REQUIRED: incoming owners must sign this proposal.'
+
+tests\unit\test_access.py:200: AssertionError
+____________________________ test_cli_ask_command _____________________________
+
+tmp_path = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-749/test_cli_ask_command0')
+
+    def test_cli_ask_command(tmp_path: Path) -> None:
+        governance = GitGovernanceAdapter()
+        governance.ensure_governance_layout(str(tmp_path))
+    
+        result = runner.invoke(
+            app,
+            [
+                "ask",
+                "What architecture is used?",
+                "--path",
+                str(tmp_path),
+                "--fake-runtime",
+            ],
+        )
+>       assert result.exit_code == 0
+E       assert 2 == 0
+E        +  where 2 = <Result SystemExit(2)>.exit_code
+
+tests\unit\test_contextual_qa.py:102: AssertionError
+___________________ test_control_api_contextual_qa_endpoint ___________________
+
+tmp_path = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-749/test_control_api_contextual_qa0')
+
+    def test_control_api_contextual_qa_endpoint(tmp_path: Path) -> None:
+        governance = GitGovernanceAdapter()
+        governance.ensure_governance_layout(str(tmp_path))
+        knowledge = GitKnowledgeAdapter()
+    
+        fake_runtime = FakeAgentRuntime(
+            canned_answer=ContextualAnswer(
+                query="Explain routing",
+                answer="Routing uses modern Standalone Routes.",
+                confidence=1.0,
+            )
+        )
+        qa_service = ContextualQAService(
+            runtime=fake_runtime,
+            knowledge_port=knowledge,
+            governance_port=governance,
+        )
+        control_service = ControlApiService(
+            governance_port=governance,
+            knowledge_port=knowledge,
+            qa_service=qa_service,
+        )
+    
+        broadcaster = MagicMock()
+        server = LoopbackControlServer(
+            control_service=control_service,
+            target_root=tmp_path,
+            broadcaster=broadcaster,
+        )
+    
+        token = "test-token-1234567890123456"
+        server.start(host="127.0.0.1", port=0, session_token=token)
+        port = server.server_port
+    
+        import urllib.request
+    
+        url = f"http://127.0.0.1:{port}/api/v1/contextual-qa"
+        payload = json.dumps({"query": "Explain routing"}).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "X-Session-Token": token,
+                "X-CSRF-Token": token,
+                "Origin": f"http://127.0.0.1:{port}",
+            },
+            method="POST",
+        )
+    
+        try:
+>           with urllib.request.urlopen(req) as resp:
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\unit\test_contextual_qa.py:160: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Users\vkumar\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\urllib\request.py:215: in urlopen
+    return opener.open(url, data, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\vkumar\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\urllib\request.py:521: in open
+    response = meth(req, response)
+               ^^^^^^^^^^^^^^^^^^^
+C:\Users\vkumar\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\urllib\request.py:630: in http_response
+    response = self.parent.error(
+C:\Users\vkumar\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\urllib\request.py:559: in error
+    return self._call_chain(*args)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\vkumar\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\urllib\request.py:492: in _call_chain
+    result = func(*args)
+             ^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <urllib.request.HTTPDefaultErrorHandler object at 0x000001CE075EDAC0>
+req = <urllib.request.Request object at 0x000001CE074E3080>
+fp = <http.client.HTTPResponse object at 0x000001CE074E24D0>, code = 403
+msg = 'Forbidden', hdrs = <http.client.HTTPMessage object at 0x000001CE05BF6E10>
+
+    def http_error_default(self, req, fp, code, msg, hdrs):
+>       raise HTTPError(req.full_url, code, msg, hdrs, fp)
+E       urllib.error.HTTPError: HTTP Error 403: Forbidden
+
+C:\Users\vkumar\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\urllib\request.py:639: HTTPError
+___________________________ test_cli_knowledge_flow ___________________________
+
+tmp_path = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-749/test_cli_knowledge_flow0')
+
+    def test_cli_knowledge_flow(tmp_path: Path) -> None:
+        # 1. CLI challenge record
+        res_ch = runner.invoke(
+            app,
+            [
+                "challenge",
+                "record",
+                str(tmp_path),
+                "--title",
+                "Broken CSS Grid",
+                "--desc",
+                "Bootstrap 3 grid classes not supported in Bootstrap 5.",
+                "--id",
+                "ch-css-1",
+            ],
+        )
+>       assert res_ch.exit_code == 0
+E       assert 2 == 0
+E        +  where 2 = <Result SystemExit(2)>.exit_code
+
+tests\unit\test_knowledge_engine.py:148: AssertionError
+__________________________ test_cli_migrate_dry_run ___________________________
+
+temp_workspace = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-749/test_cli_migrate_dry_run0/repo')
+tmp_path = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-749/test_cli_migrate_dry_run0')
+
+    def test_cli_migrate_dry_run(temp_workspace: Path, tmp_path: Path) -> None:
+        runner = CliRunner()
+        state_dir = tmp_path / "cli_state"
+    
+        res = runner.invoke(
+            app,
+            [
+                "migrate",
+                str(temp_workspace),
+                "--dry-run",
+                "--auto-approve",
+                "--state-dir",
+                str(state_dir),
+                "--fake-runner",
+            ],
+        )
+>       assert res.exit_code == 0
+E       assert 2 == 0
+E        +  where 2 = <Result SystemExit(2)>.exit_code
+
+tests\unit\test_migration_pipeline.py:199: AssertionError
+_______________ test_native_heartbeat_stops_entire_job[cancel] ________________
+
+native = (<migration_agent.adapters.workflow_runtime.WorkflowRuntime object at 0x000001CE05C12660>, WorkflowRecord(schema_versi...Lease(project_id='repo-46227e2e5bedb8b6d478cf8e', owner='native-fixture', generation=4, expires_at=1791560555.1955087))
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001CE05C107A0>
+stop = 'cancel'
+
+    @pytest.mark.parametrize("stop", ["timeout", "cancel", "lease", "revoke"])
+    @pytest.mark.skipif(sys.platform != "win32", reason="Measured Windows descendant cleanup")
+    def test_native_heartbeat_stops_entire_job(native, monkeypatch, stop):
+        runtime, record, commands, lease = native
+        entry = runtime.settings.native_toolchain_root / "node_modules/npm/bin/npm-cli.js"
+        entry.write_text(
+            (
+                "const fs=require('fs'),cp=require('child_process'); "
+                "fs.mkdirSync('dist',{recursive:true}); const "
+                "p=cp.spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{st"
+                "dio:'ignore'}); "
+                "fs.writeFileSync('dist/child.pid',String(p.pid)); "
+                "setInterval(()=>{},1000);"
+            ),
+            encoding="utf-8",
+        )
+        consent = authorize(native)
+        pid_path = Path(record.staging_path) / "dist/child.pid"
+        original_monotonic = time.monotonic
+        if stop == "timeout":
+            monkeypatch.setattr(
+                time, "monotonic", lambda: original_monotonic() + (61 if pid_path.exists() else 0)
+            )
+        original_renew = runtime.store.renew_lease
+    
+        def renew(selected, ttl):
+            if pid_path.exists():
+                if stop == "revoke":
+                    runtime.store.revoke_native_consent(record.project_id, consent.consent_id)
+                elif stop == "lease":
+                    runtime.store.release_lease(lease)
+            return original_renew(selected, ttl)
+    
+        monkeypatch.setattr(runtime.store, "renew_lease", renew)
+        try:
+            if stop == "timeout":
+                result = runtime.apply_service.validate(
+                    record.plan_id, record.step_id, commands[:1], runtime.runner, lease
+                )
+                assert result.state == Lifecycle.VALIDATION_FAILED
+                assert result.validation_results[0].status.value == "TIMED_OUT"
+            else:
+                with pytest.raises(ValueError, match=r"NATIVE_CONSENT|CANCEL_REQUESTED|LEASE"):
+                    runtime.apply_service.validate(
+                        record.plan_id,
+                        record.step_id,
+                        commands[:1],
+                        runtime.runner,
+                        lease,
+                        cancelled=lambda: stop == "cancel" and pid_path.exists(),
+                    )
+        finally:
+            monkeypatch.setattr(time, "monotonic", original_monotonic)
+        assert pid_path.exists()
+>       assert_not_running(int(pid_path.read_text()))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       ValueError: invalid literal for int() with base 10: ''
+
+tests\unit\test_native_validation.py:493: ValueError
+________________ test_cli_legacy_mode_a_fails_without_approval ________________
+
+tmp_path = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-749/test_cli_legacy_mode_a_fails_w0')
+
+    def test_cli_legacy_mode_a_fails_without_approval(
+        tmp_path: Path, cli_workflow_authorization
+    ) -> None:
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        state = tmp_path / "state"
+        store = SqliteCheckpointStore(state)
+        plan = _pending_plan(repo, store)
+        trust = tmp_path / "trust"
+        key = _legacy_key()
+        LocalTrustStoreAdapter(trust).bootstrap_authority_key(repo.name, key)
+        result = CliRunner().invoke(
+            app,
+            [
+                "plan",
+                "approve",
+                plan.plan_id,
+                "--actor",
+                "legacy",
+                "--assurance-level",
+                "MODE_A",
+                "--signature",
+                _forged_public_proof(compute_plan_digest(plan), key.public_key),
+                "--key-id",
+                key.key_id,
+                "--state-dir",
+                str(state),
+                "--project-root",
+                str(repo),
+                "--trust-dir",
+                str(trust),
+            ],
+>       )
+E       assert 'LEGACY_MODE_A_DISABLED' in '{"status": "blocked", "error": "ACCESS_BOOTSTRAP_REQUIRED: run access bootstrap with external governance."}\n'
+E        +  where '{"status": "blocked", "error": "ACCESS_BOOTSTRAP_REQUIRED: run access bootstrap with external governance."}\n' = <Result SystemExit(2)>.output
+
+tests\unit\test_trust_store.py:179: AssertionError
+___________ test_canonical_cross_process_writes_invalidate_snapshot ___________
+
+tmp_path = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-749/test_canonical_cross_process_w0')
+
+    def test_canonical_cross_process_writes_invalidate_snapshot(tmp_path: Path) -> None:
+        source = make_source(tmp_path)
+        api = service(source)
+        previous = api.snapshot()
+        save_plan(source)
+        current = api.snapshot()
+        assert current.cursor > previous.cursor
+        assert current.revision != previous.revision
+        assert source.events(previous.cursor).changed
+        reopened = CanonicalWorkbench(source.binding.project_root, source.settings, source.context)
+        assert reopened.snapshot().cursor == current.cursor
+>       assert reopened.snapshot().revision == current.revision
+E       AssertionError: assert 'sha256:8096d...c5518f1267903' == 'sha256:d2bc6...7356d3f1c109d'
+E         
+E         - sha256:d2bc62625e73cac5d37d0535278a451edf60f627e4c10d873fa7356d3f1c109d
+E         + sha256:8096da7c73b10ea91c0be8943248f1fa288b81efb4c9b78c40dc5518f1267903
+
+tests\unit\test_workbench.py:79: AssertionError
+__________ test_gui_exact_apply_and_retry_use_shared_guarded_service __________
+
+workflow = (<migration_agent.adapters.workflow_runtime.WorkflowRuntime object at 0x000001CE062CE270>, 'plan-e2e4dd2264ef4452a7485417ec8d2107', 'component-1')
+
+    def test_gui_exact_apply_and_retry_use_shared_guarded_service(workflow) -> None:
+        runtime, plan, step = workflow
+        record = validated(workflow)
+        before_approval = CanonicalWorkbench(
+            runtime.binding.project_root,
+            runtime.settings,
+            WorkflowContext(
+                actor=runtime.proposals.actor,
+                assurance=AssuranceLevel.MODE_B,
+                capabilities=frozenset(WorkflowCapability),
+            ),
+        )
+        assert service_attention(before_approval) == {task_id(plan, step)}
+        runtime.apply_service.approve(plan, step, HumanFixture())
+        source = CanonicalWorkbench(
+            runtime.binding.project_root,
+            runtime.settings,
+            WorkflowContext(
+                actor=runtime.proposals.actor,
+                assurance=AssuranceLevel.MODE_B,
+                capabilities=frozenset(WorkflowCapability),
+            ),
+        )
+        source.runtime = runtime
+        api = WorkbenchService(
+            source,
+            InspectionContext(
+                actor=runtime.proposals.actor,
+                assurance=AssuranceLevel.MODE_B,
+                capabilities=frozenset(InspectionCapability),
+            ),
+        )
+        snap = api.snapshot()
+        detail = api.detail(snap.project_id, task_id(plan, step), snap.revision)
+        assert dict(detail.milestones)["Human decision"] == "APPROVAL_RECORDED"
+        assert "--trust-root" in detail.review_command
+        command = WorkCommand(
+            project_id=snap.project_id,
+            node_id=task_id(plan, step),
+            expected_revision=snap.revision,
+            request_id="gui-exact-apply",
+            kind="apply",
+            changeset_id=record.changeset_id,
+        )
+>       first = api.dispatch(command)
+                ^^^^^^^^^^^^^^^^^^^^^
+
+tests\unit\test_workbench_apply.py:71: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\migration_agent\application\workbench.py:295: in dispatch
+    prior = self.source.receipt(command)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\migration_agent\adapters\workbench.py:648: in receipt
+    access = self.authorization.require(str(caps[command.kind]))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\migration_agent\adapters\access_runtime.py:109: in require
+    service = self.service()
+              ^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <migration_agent.adapters.access_runtime.ProjectAuthorization object at 0x000001CE074C9670>
+
+    def service(self) -> AccessService:
+        if not self.trust.exists():
+>           raise AccessDenied("ACCESS_BOOTSTRAP_REQUIRED: enroll the governance project owner.")
+E           migration_agent.domain.access.AccessDenied: ACCESS_BOOTSTRAP_REQUIRED: enroll the governance project owner.
+
+src\migration_agent\adapters\access_runtime.py:74: AccessDenied
+________ test_production_client_with_real_loopback_and_canonical_state ________
+
+tmp_path = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-749/test_production_client_with_re0')
+
+    def test_production_client_with_real_loopback_and_canonical_state(tmp_path: Path) -> None:
+        node = shutil.which("node")
+        browser = Path(
+            os.environ.get(
+                "CHROME_BIN",
+                "C:/Program Files/Google/Chrome/Application/chrome.exe"
+                if os.name == "nt"
+                else "/usr/bin/chromium",
+            )
+        )
+        client = Path("ui/control-center")
+        if (
+            node is None
+            or not browser.is_file()
+            or not (client / "node_modules/playwright-core").is_dir()
+        ):
+            pytest.skip("Offline GUI browser gate requires installed Node, Chromium and npm ci.")
+        source = make_source(tmp_path)
+        save_plan(source, title="Document generic interfaces")
+        before = list(source.binding.project_root.rglob("*"))
+        server = LoopbackControlServer(
+            ControlApiService(), source.binding.project_root, workbench=service(source)
+        )
+        server.start("127.0.0.1", 0, "offline-live-fixture")
+        try:
+            result = subprocess.run(
+                [node, "tests/live-workbench.cjs"],
+                cwd=client,
+                env={**os.environ, "GUI_TEST_ORIGIN": server.get_url(), "CHROME_BIN": str(browser)},
+                capture_output=True,
+                text=True,
+                timeout=90,
+            )
+>           assert result.returncode == 0, result.stdout + result.stderr
+E           AssertionError: locator.waitFor: Timeout 30000ms exceeded.
+E             Call log:
+E             [2m  - waiting for getByRole('heading', { name: 'Recorded evidence', exact: true }) to be visible[22m
+E             
+E                 at C:\Projects\New folder\migration-agent\ui\control-center\tests\live-workbench.cjs:34:81 {
+E               log: [
+E                 "  - waiting for getByRole('heading', { name: 'Recorded evidence', exact: true }) to be visible"
+E               ],
+E               name: 'TimeoutError'
+E             }
+E             
+E           assert 1 == 0
+E            +  where 1 = CompletedProcess(args=['C:\\Program Files\\nodejs\\node.EXE', 'tests/live-workbench.cjs'], returncode=1, stdout='', st...ByRole(\'heading\', { name: \'Recorded evidence\', exact: true }) to be visible"\n  ],\n  name: \'TimeoutError\'\n}\n').returncode
+
+tests\unit\test_workbench_browser.py:48: AssertionError
+---------------------------- Captured stderr call -----------------------------
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 57304)
+Traceback (most recent call last):
+  File "C:\Users\vkumar\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\socketserver.py", line 697, in process_request_thread
+    self.finish_request(request, client_address)
+  File "C:\Users\vkumar\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "C:\Users\vkumar\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\socketserver.py", line 766, in __init__
+    self.handle()
+  File "C:\Users\vkumar\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\http\server.py", line 440, in handle
+    self.handle_one_request()
+  File "C:\Users\vkumar\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\http\server.py", line 428, in handle_one_request
+    method()
+  File "C:\Projects\New folder\migration-agent\src\migration_agent\adapters\control_api\server.py", line 148, in do_GET
+    self._serve_static_asset(path, query)
+  File "C:\Projects\New folder\migration-agent\src\migration_agent\adapters\control_api\server.py", line 654, in _serve_static_asset
+    self.wfile.write(content)
+  File "C:\Users\vkumar\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\socketserver.py", line 845, in write
+    self._sock.sendall(b)
+ConnectionAbortedError: [WinError 10053] An established connection was aborted by the software in your host machine
+----------------------------------------
+______________________ test_real_workbench_http_boundary ______________________
+
+tmp_path = WindowsPath('C:/Users/vkumar/AppData/Local/Temp/pytest-of-vkumar/pytest-749/test_real_workbench_http_bound0')
+
+    def test_real_workbench_http_boundary(tmp_path: Path) -> None:
+        root = tmp_path / "project"
+        root.mkdir()
+        source = CanonicalWorkbench(
+            root,
+            Settings(
+                state_dir=tmp_path / "state",
+                staging_root=tmp_path / "staging",
+            ),
+            WorkflowContext(
+                actor="operator",
+                assurance=AssuranceLevel.MODE_B,
+                capabilities=frozenset(WorkflowCapability),
+            ),
+        )
+        api = WorkbenchService(
+            source,
+            InspectionContext(
+                actor="operator",
+                assurance=AssuranceLevel.MODE_B,
+                capabilities=frozenset(InspectionCapability),
+            ),
+        )
+        server = LoopbackControlServer(ControlApiService(), source.binding.project_root, workbench=api)
+        server.start("127.0.0.1", 0, "fixture-session")
+        conn = http.client.HTTPConnection("127.0.0.1", server.port)
+        headers = {
+            "X-Session-Token": "fixture-session",
+            "X-CSRF-Token": server.csrf_token,
+            "Content-Type": "application/json",
+        }
+        try:
+            conn.request("GET", "/api/v1/workbench", headers=headers)
+            response = conn.getresponse()
+            assert response.status == 200
+            project = json.loads(response.read())["data"]["project_id"]
+            assert "unsafe-eval" not in response.getheader("Content-Security-Policy")
+            snapshot = api.snapshot()
+            conn.request(
+                "POST",
+                "/api/v1/workbench/answer",
+                json.dumps(
+                    {
+                        "project_id": project,
+                        "node_id": "project",
+                        "revision": snapshot.revision,
+                        "question": "What is the current status?",
+                    }
+                ),
+                headers=headers,
+            )
+            answer_response = conn.getresponse()
+>           assert answer_response.status == 200
+E           assert 403 == 200
+E            +  where 403 = <http.client.HTTPResponse object at 0x000001CE077818A0>.status
+
+tests\unit\test_workbench_http.py:69: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/unit/test_access.py::test_new_owner_and_member_key_need_possession
+FAILED tests/unit/test_contextual_qa.py::test_cli_ask_command - assert 2 == 0
+FAILED tests/unit/test_contextual_qa.py::test_control_api_contextual_qa_endpoint
+FAILED tests/unit/test_knowledge_engine.py::test_cli_knowledge_flow - assert ...
+FAILED tests/unit/test_migration_pipeline.py::test_cli_migrate_dry_run - asse...
+FAILED tests/unit/test_native_validation.py::test_native_heartbeat_stops_entire_job[cancel]
+FAILED tests/unit/test_trust_store.py::test_cli_legacy_mode_a_fails_without_approval
+FAILED tests/unit/test_workbench.py::test_canonical_cross_process_writes_invalidate_snapshot
+FAILED tests/unit/test_workbench_apply.py::test_gui_exact_apply_and_retry_use_shared_guarded_service
+FAILED tests/unit/test_workbench_browser.py::test_production_client_with_real_loopback_and_canonical_state
+FAILED tests/unit/test_workbench_http.py::test_real_workbench_http_boundary
+11 failed, 678 passed, 3 skipped in 655.12s (0:10:55)

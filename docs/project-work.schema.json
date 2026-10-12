@@ -1,0 +1,175 @@
+{
+  "$defs": {
+    "ProjectWorkItem": {
+      "additionalProperties": false,
+      "properties": {
+        "acceptance": {
+          "default": [],
+          "items": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Acceptance",
+          "type": "array"
+        },
+        "declared_status": {
+          "default": "UNKNOWN",
+          "enum": [
+            "UNKNOWN",
+            "PLANNED",
+            "IN_PROGRESS",
+            "COMPLETE"
+          ],
+          "title": "Declared Status",
+          "type": "string"
+        },
+        "dependencies": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Dependencies",
+          "type": "array"
+        },
+        "item_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+          "title": "Item Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "group",
+            "task"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "order": {
+          "default": 0,
+          "maximum": 1000000,
+          "minimum": 0,
+          "title": "Order",
+          "type": "integer"
+        },
+        "owner": {
+          "default": "",
+          "maxLength": 128,
+          "title": "Owner",
+          "type": "string"
+        },
+        "parent_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent Id"
+        },
+        "section": {
+          "default": "work",
+          "enum": [
+            "foundation",
+            "work",
+            "knowledge"
+          ],
+          "title": "Section",
+          "type": "string"
+        },
+        "summary": {
+          "default": "",
+          "maxLength": 4096,
+          "title": "Summary",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "workflow": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WorkflowEvidenceRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "item_id",
+        "kind",
+        "title"
+      ],
+      "title": "ProjectWorkItem",
+      "type": "object"
+    },
+    "WorkflowEvidenceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "task_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Task Id",
+          "type": "string"
+        },
+        "workflow_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "workflow_id",
+        "task_id"
+      ],
+      "title": "WorkflowEvidenceRef",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "items": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ProjectWorkItem"
+      },
+      "maxItems": 1000,
+      "title": "Items",
+      "type": "array"
+    },
+    "objective": {
+      "default": "",
+      "maxLength": 8192,
+      "title": "Objective",
+      "type": "string"
+    },
+    "project_name": {
+      "default": "",
+      "maxLength": 200,
+      "title": "Project Name",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "title": "ProjectWorkDefinition",
+  "type": "object"
+}

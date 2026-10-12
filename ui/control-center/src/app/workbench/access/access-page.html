@@ -1,0 +1,478 @@
+<h1 id="content-heading" tabindex="-1">Users and access</h1>
+<p class="text-body-secondary">
+  Manage membership in the migration governance project. Git permissions and agent roles are
+  assigned separately.
+</p>
+<p class="small text-body-secondary">
+  This local session represents the launcher's enrolled OS identity. Imported Git users must bind
+  their managed identity before working. Independent reviewers and operators use enrolled signing
+  keys for Mode A handoffs; local Mode B approvals stay with their approving account.
+</p>
+<button class="btn btn-outline-secondary mb-3" [disabled]="busy()" (click)="refresh()">
+  Refresh access
+</button>
+@if (error()) {
+<div class="alert alert-danger" role="alert">{{error()}}</div>
+} @if (busy()) {
+<p role="status">Loading or preparing access proposal…</p>
+} @if (session(); as me) {
+<section class="card mb-3">
+  <div class="card-body">
+    <h2 class="h5">My access</h2>
+    <p>
+      Principal: {{me.principal_id || 'Not enrolled'}} · Roles: {{me.roles.join(', ') || 'None'}}
+    </p>
+    <p class="small text-break">
+      Active revision: {{me.access_digest || 'Owner bootstrap required'}}
+    </p>
+    <details>
+      <summary>Effective permissions</summary>
+      <ul>
+        @for (capability of me.capabilities; track capability) {
+        <li>{{capability}}</li>
+        }
+      </ul>
+    </details>
+    @if (!me.access_digest) {
+    <p>
+      Use <code>agent access bootstrap --help</code> in the trusted terminal to bind the separate
+      governance repository and owner public key.
+    </p>
+    }
+  </div>
+</section>
+} @if (policy(); as policy) {
+<h2 class="h4">
+  Project members <span class="badge text-bg-secondary">Revision {{policy.revision}}</span>
+</h2>
+<div class="table-responsive">
+  <table class="table align-middle">
+    <thead>
+      <tr>
+        <th scope="col">User</th>
+        <th scope="col">Git account</th>
+        <th scope="col">Agent roles</th>
+        <th scope="col">Status</th>
+        <th scope="col">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      @for (member of policy.members; track member.principal_id) {
+      <tr>
+        <th scope="row">
+          {{member.label}}<br /><small class="text-body-secondary"
+            >{{member.principal_id}} @if (policy.owners.includes(member.principal_id)) {·
+            Owner}</small
+          >
+        </th>
+        <td>
+          {{member.git_account?.provider || 'Local'}} {{member.git_account?.login}}<br /><small
+            >{{member.git_account?.host}}</small
+          >
+        </td>
+        <td>{{member.roles.join(', ')}}</td>
+        <td>
+          {{member.status}} @if (member.expires_at) {<br /><small
+            >Expires {{member.expires_at * 1000 | date:'medium'}}</small
+          >}
+        </td>
+        <td>
+          <button
+            class="btn btn-sm btn-outline-secondary mb-1"
+            [disabled]="busy()"
+            (click)="prepareOnboarding(member.principal_id)"
+          >
+            Onboarding information
+          </button>
+          @if (canManage()) {
+          <div class="d-flex gap-2">
+            <button
+              class="btn btn-sm btn-outline-primary"
+              [disabled]="busy()"
+              (click)="editMember(member)"
+            >
+              Edit {{member.label}}</button
+            ><button
+              class="btn btn-sm btn-outline-danger"
+              [disabled]="busy() || policy.owners.includes(member.principal_id)"
+              (click)="removeMember(member)"
+            >
+              Propose removal
+            </button>
+          </div>
+          }
+        </td>
+      </tr>
+      }
+    </tbody>
+  </table>
+</div>
+@if (canManage()) {
+<section class="card mb-3">
+  <div class="card-body">
+    <h2 class="h5">{{editingMember() ? 'Edit member' : 'Add local member'}}</h2>
+    <p class="small">
+      New Git imports stay pending until identity enrollment. Public key enrollment uses the
+      terminal so key possession is verified.
+    </p>
+    <form (submit)="saveMember($event)" class="row g-3">
+      <div class="col-md-6">
+        <label for="principal" class="form-label">Principal ID</label
+        ><input
+          id="principal"
+          name="principal_id"
+          class="form-control"
+          required
+          pattern="[A-Za-z0-9][A-Za-z0-9_-]{0,63}"
+          [readOnly]="!!editingMember()"
+          [value]="editingMember()?.principal_id || ''"
+        />
+      </div>
+      <div class="col-md-6">
+        <label for="member-label" class="form-label">Display name</label
+        ><input
+          id="member-label"
+          name="label"
+          class="form-control"
+          required
+          maxlength="128"
+          [value]="editingMember()?.label || ''"
+        />
+      </div>
+      <div class="col-md-6">
+        <label for="os-identity" class="form-label">Stable OS identity</label
+        ><input
+          id="os-identity"
+          name="os_identity"
+          class="form-control"
+          maxlength="256"
+          [value]="editingMember()?.os_identity || ''"
+        /><small>Ask the user to run <code>agent access identity</code>.</small>
+      </div>
+      <div class="col-md-3">
+        <label for="member-status" class="form-label">Status</label
+        ><select
+          id="member-status"
+          name="status"
+          class="form-select"
+          [value]="editingMember()?.status || 'pending'"
+        >
+          <option value="pending">Pending enrollment</option>
+          <option value="active">Active</option>
+          <option value="suspended">Suspended</option>
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label for="member-expiry" class="form-label">Expiry (optional)</label
+        ><input
+          id="member-expiry"
+          name="expires_at"
+          type="datetime-local"
+          class="form-control"
+          [value]="editingMember()?.expires_at ? (editingMember()!.expires_at! * 1000 | date:'yyyy-MM-ddTHH:mm') : ''"
+        />
+      </div>
+      <fieldset class="col-12">
+        <legend class="h6">Agent roles</legend>
+        <div class="d-flex flex-wrap gap-3">
+          @for (role of policy.roles; track role.role_id) {<label
+            ><input
+              class="form-check-input me-1"
+              type="checkbox"
+              name="role"
+              [value]="role.role_id"
+              [checked]="editingMember()?.roles?.includes(role.role_id) || false"
+            />{{role.label}}</label
+          >}
+        </div>
+      </fieldset>
+      <div class="col-12 d-flex gap-2">
+        <button class="btn btn-primary" [disabled]="busy()">Prepare member change</button
+        ><button type="button" class="btn btn-outline-secondary" (click)="editingMember.set(null)">
+          New member
+        </button>
+      </div>
+    </form>
+  </div>
+</section>
+} @if (onboarding(); as packet) {
+<section class="card mb-3">
+  <div class="card-body">
+    <h2 class="h5">Public onboarding packet · {{packet.principal_id}}</h2>
+    <p>
+      Share these project details and steps with the selected member. Membership remains
+      {{packet.status}} until the owner completes enrollment. This packet contains no private keys,
+      trust anchors, operational history or browser credentials.
+    </p>
+    <ol>
+      @for (step of packet.steps; track step) {
+      <li>{{step}}</li>
+      }
+    </ol>
+    <details>
+      <summary>Public project and role details</summary>
+      <pre class="small text-break">{{packet | json}}</pre>
+    </details>
+  </div>
+</section>
+}
+<section class="card mb-3">
+  <div class="card-body">
+    <h2 class="h5">Roles and capabilities</h2>
+    @for (role of policy.roles; track role.role_id) {
+    <details class="mb-2">
+      <summary>{{role.label}} ({{role.capabilities.length}} permissions)</summary>
+      <p class="small text-break">{{role.capabilities.join(', ')}}</p>
+      @if (canManage()) {<button
+        class="btn btn-sm btn-outline-primary me-2"
+        (click)="editRole(role)"
+      >
+        Edit {{role.label}}</button
+      ><button class="btn btn-sm btn-outline-danger" [disabled]="busy()" (click)="removeRole(role)">
+        Propose removal</button
+      >}
+    </details>
+    } @if (canManage()) {
+    <form (submit)="saveRole($event)" class="mt-3">
+      <h3 class="h6">{{editingRole() ? 'Edit role' : 'Create role'}}</h3>
+      <label for="role-id" class="form-label">Role ID</label
+      ><input
+        id="role-id"
+        name="role_id"
+        class="form-control mb-2"
+        required
+        pattern="[a-z][a-z0-9_-]{0,63}"
+        [readOnly]="!!editingRole()"
+        [value]="editingRole()?.role_id || ''"
+      />
+      <label for="role-label" class="form-label">Display label</label
+      ><input
+        id="role-label"
+        name="label"
+        class="form-control mb-2"
+        required
+        maxlength="80"
+        [value]="editingRole()?.label || ''"
+      />
+      <fieldset>
+        <legend class="h6">Explicit permissions</legend>
+        <div class="row">
+          @for (capability of catalog(); track capability) {<label class="col-md-6 col-xl-4 mb-2"
+            ><input
+              class="form-check-input me-1"
+              type="checkbox"
+              name="capability"
+              [value]="capability"
+              [checked]="editingRole()?.capabilities?.includes(capability) || false"
+            />{{capability}}</label
+          >}
+        </div>
+      </fieldset>
+      <button class="btn btn-primary me-2" [disabled]="busy()">Prepare role change</button
+      ><button class="btn btn-outline-secondary" type="button" (click)="editingRole.set(null)">
+        New role
+      </button>
+    </form>
+    }
+  </div>
+</section>
+@if (canDirectory()) {
+<section class="card mb-3">
+  <div class="card-body">
+    <h2 class="h5">Import existing Git users</h2>
+    @if (canManage()) {
+    <details class="mb-3" [open]="!policy.git_repository">
+      <summary>Governance Git connection</summary>
+      <p class="small mt-2">
+        Discover the repository identity, then prepare an owner-signed connection. Importing members
+        is enabled after activation.
+      </p>
+      <form (submit)="previewRepository($event)" class="row g-3">
+        <div class="col-md-3">
+          <label for="connection-provider" class="form-label">Provider</label
+          ><select id="connection-provider" name="provider" class="form-select">
+            <option value="github">GitHub</option>
+            <option value="gitlab">GitLab</option>
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label for="connection-host" class="form-label">Host</label
+          ><input
+            id="connection-host"
+            name="host"
+            class="form-control"
+            required
+            placeholder="github.com or gitlab.com"
+          />
+        </div>
+        <div class="col-md-5">
+          <label for="connection-repository" class="form-label">Repository</label
+          ><input
+            id="connection-repository"
+            name="repository"
+            class="form-control"
+            required
+            placeholder="organization/repository"
+          />
+        </div>
+        <div class="col-12">
+          <button class="btn btn-outline-primary" [disabled]="busy()">
+            Discover repository identity
+          </button>
+        </div>
+      </form>
+      @if (repositoryPreview(); as preview) {
+      <p class="mt-3 text-break">
+        {{preview.request.host}}/{{preview.request.repository}} · Stable repository ID
+        {{preview.repository_id}} · {{preview.members.length}} effective members
+      </p>
+      <button type="button" class="btn btn-primary" [disabled]="busy()" (click)="repository()">
+        Prepare signed repository connection</button
+      >}
+    </details>
+    } @if (policy.git_repository; as connection) {
+    <p class="small text-break">
+      Approved connection: {{connection.provider}} · {{connection.host}}/{{connection.repository}} ·
+      ID {{connection.repository_id}}
+    </p>
+    } @else {
+    <p class="alert alert-info">Approve the governance Git connection before importing users.</p>
+    }
+    <p>
+      Use the installed authenticated provider client. This reads effective repository members,
+      including inherited membership. Provider roles do not assign agent roles.
+    </p>
+    <form (submit)="loadDirectory($event)" class="row g-3">
+      <div class="col-md-3">
+        <label for="git-provider" class="form-label">Provider</label
+        ><select
+          id="git-provider"
+          name="provider"
+          class="form-select"
+          [value]="policy.git_repository?.provider || 'github'"
+        >
+          <option value="github">GitHub</option>
+          <option value="gitlab">GitLab</option>
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label for="git-host" class="form-label">Host</label
+        ><input
+          id="git-host"
+          name="host"
+          class="form-control"
+          placeholder="github.com or gitlab.com"
+          [value]="policy.git_repository?.host || ''"
+          [readOnly]="!!policy.git_repository"
+          required
+        />
+      </div>
+      <div class="col-md-5">
+        <label for="git-repo" class="form-label">Governance repository</label
+        ><input
+          id="git-repo"
+          name="repository"
+          class="form-control"
+          placeholder="organization/repository"
+          [value]="policy.git_repository?.repository || ''"
+          [readOnly]="!!policy.git_repository"
+          required
+        />
+      </div>
+      <div class="col-12">
+        <button class="btn btn-outline-primary" [disabled]="busy() || !policy.git_repository">
+          Load Git members
+        </button>
+      </div>
+    </form>
+    @if (directory(); as directory) {
+    <p class="mt-3">{{directory.message}}</p>
+    <form (submit)="importMembers($event)">
+      @for (member of directory.members; track member.account.account_id) {<label
+        class="d-block mb-2"
+        ><input
+          class="form-check-input me-2"
+          type="checkbox"
+          [checked]="selected().has(member.account.account_id)"
+          [disabled]="member.state !== 'active'"
+          (change)="select(member.account.account_id, $event)"
+        />{{member.account.login}} · Git role {{member.git_role}} · ID {{member.account.account_id}}
+        · {{member.state}}</label
+      >}
+      <fieldset class="my-3">
+        <legend class="h6">Assign explicit agent roles</legend>
+        <div class="d-flex flex-wrap gap-3">
+          @for (role of policy.roles; track role.role_id) {<label
+            ><input
+              class="form-check-input me-1"
+              type="checkbox"
+              name="role"
+              [value]="role.role_id"
+            />{{role.label}}</label
+          >}
+        </div>
+      </fieldset>
+      <button class="btn btn-primary" [disabled]="busy() || !canManage() || !selected().size">
+        Prepare import of selected users
+      </button>
+    </form>
+    }
+  </div>
+</section>
+} @if (canManage()) {
+<section class="card mb-3">
+  <div class="card-body">
+    <h2 class="h5">Ownership</h2>
+    <p>
+      The last eligible owner cannot be removed. New owners must sign the exact proposal with their
+      enrolled key.
+    </p>
+    <form (submit)="owners($event)">
+      @for (member of policy.members; track member.principal_id) {<label class="d-block mb-2"
+        ><input
+          class="form-check-input me-2"
+          type="checkbox"
+          name="owner"
+          [value]="member.principal_id"
+          [checked]="policy.owners.includes(member.principal_id)"
+        />{{member.label}}</label
+      >}
+      <button class="btn btn-outline-primary" [disabled]="busy()">Prepare ownership change</button>
+    </form>
+  </div>
+</section>
+} } @if (review(); as review) {
+<section class="card border-warning mb-3" aria-labelledby="access-review">
+  <div class="card-body">
+    <h2 id="access-review" class="h4">Review proposed access change</h2>
+    <p class="alert alert-warning">{{review.message}}</p>
+    <p>Expires {{review.proposal.expires_at * 1000 | date:'medium'}}</p>
+    <p class="small text-break">Exact signing digest: {{review.signing_digest}}</p>
+    <label for="approval-command" class="form-label"
+      >Trusted terminal command (PowerShell quoting)</label
+    ><textarea
+      id="approval-command"
+      readonly
+      class="form-control font-monospace mb-3"
+      rows="3"
+      [value]="command()"
+    ></textarea>
+    <p class="small">
+      Run with the same state/trust settings as the launcher. Review the complete proposal before
+      typing the exact confirmation. Refresh after terminal activation.
+    </p>
+    <div class="row g-3">
+      <div class="col-lg-6">
+        <h3 class="h6">Current policy</h3>
+        <pre class="border rounded p-2 overflow-auto vh-100">{{review.before | json}}</pre>
+      </div>
+      <div class="col-lg-6">
+        <h3 class="h6">Proposed policy</h3>
+        <pre class="border rounded p-2 overflow-auto vh-100">
+{{review.proposal.candidate | json}}</pre
+        >
+      </div>
+    </div>
+  </div>
+</section>
+}

@@ -1,0 +1,112 @@
+# Full-Stack Migration Inventory: penalite-frontend
+
+## Architectural Domains Detected
+
+- **frontend**
+- **infrastructure**
+
+## Layer Summary
+
+| Domain | Node Count |
+| --- | ---: |
+| frontend | 37 |
+| backend_api | 0 |
+| database_schema | 0 |
+| infrastructure | 1 |
+| **Total Edges** | **0** |
+
+## Discovered Components & Endpoints
+
+| Node ID | Domain | Entity Type | Path | Line |
+| --- | --- | --- | --- | ---: |
+| `frontend:file:app/features/application/template.hbs` | frontend | component | `app/features/application/template.hbs` | - |
+| `frontend:file:app/features/components/decider-penalites-parent/component.js` | frontend | component | `app/features/components/decider-penalites-parent/component.js` | - |
+| `frontend:file:app/features/components/decider-penalites-parent/detail-ligne-penalite/component.js` | frontend | component | `app/features/components/decider-penalites-parent/detail-ligne-penalite/component.js` | - |
+| `frontend:file:app/features/components/decider-penalites-parent/detail-ligne-penalite/template.hbs` | frontend | component | `app/features/components/decider-penalites-parent/detail-ligne-penalite/template.hbs` | - |
+| `frontend:file:app/features/components/decider-penalites-parent/ligne-penalite/component.js` | frontend | component | `app/features/components/decider-penalites-parent/ligne-penalite/component.js` | - |
+| `frontend:file:app/features/components/decider-penalites-parent/ligne-penalite/template.hbs` | frontend | component | `app/features/components/decider-penalites-parent/ligne-penalite/template.hbs` | - |
+| `frontend:file:app/features/components/decider-penalites-parent/modal-abandonnee/component.js` | frontend | component | `app/features/components/decider-penalites-parent/modal-abandonnee/component.js` | - |
+| `frontend:file:app/features/components/decider-penalites-parent/modal-abandonnee/template.hbs` | frontend | component | `app/features/components/decider-penalites-parent/modal-abandonnee/template.hbs` | - |
+| `frontend:file:app/features/components/decider-penalites-parent/modal-validation/component.js` | frontend | component | `app/features/components/decider-penalites-parent/modal-validation/component.js` | - |
+| `frontend:file:app/features/components/decider-penalites-parent/modal-validation/template.hbs` | frontend | component | `app/features/components/decider-penalites-parent/modal-validation/template.hbs` | - |
+| `frontend:file:app/features/components/decider-penalites-parent/synthese/component.js` | frontend | component | `app/features/components/decider-penalites-parent/synthese/component.js` | - |
+| `frontend:file:app/features/components/decider-penalites-parent/synthese/template.hbs` | frontend | component | `app/features/components/decider-penalites-parent/synthese/template.hbs` | - |
+| `frontend:file:app/features/components/decider-penalites-parent/template.hbs` | frontend | component | `app/features/components/decider-penalites-parent/template.hbs` | - |
+| `frontend:file:app/features/components/exporter-taux-service-cql-parent/component.js` | frontend | component | `app/features/components/exporter-taux-service-cql-parent/component.js` | - |
+| `frontend:file:app/features/components/exporter-taux-service-cql-parent/template.hbs` | frontend | component | `app/features/components/exporter-taux-service-cql-parent/template.hbs` | - |
+| `frontend:file:app/features/components/parametrer-penalites-parent/component.js` | frontend | component | `app/features/components/parametrer-penalites-parent/component.js` | - |
+| `frontend:file:app/features/components/parametrer-penalites-parent/delai-de-cloture/component.js` | frontend | component | `app/features/components/parametrer-penalites-parent/delai-de-cloture/component.js` | - |
+| `frontend:file:app/features/components/parametrer-penalites-parent/delai-de-cloture/template.hbs` | frontend | component | `app/features/components/parametrer-penalites-parent/delai-de-cloture/template.hbs` | - |
+| `frontend:file:app/features/components/parametrer-penalites-parent/montant-minimum/component.js` | frontend | component | `app/features/components/parametrer-penalites-parent/montant-minimum/component.js` | - |
+| `frontend:file:app/features/components/parametrer-penalites-parent/montant-minimum/template.hbs` | frontend | component | `app/features/components/parametrer-penalites-parent/montant-minimum/template.hbs` | - |
+| `frontend:file:app/features/components/parametrer-penalites-parent/template.hbs` | frontend | component | `app/features/components/parametrer-penalites-parent/template.hbs` | - |
+| `frontend:file:app/features/components/suivre-taux-service-cql-parent/component.js` | frontend | component | `app/features/components/suivre-taux-service-cql-parent/component.js` | - |
+| `frontend:file:app/features/components/suivre-taux-service-cql-parent/detail-lignes-commande/component.js` | frontend | component | `app/features/components/suivre-taux-service-cql-parent/detail-lignes-commande/component.js` | - |
+| `frontend:file:app/features/components/suivre-taux-service-cql-parent/detail-lignes-commande/template.hbs` | frontend | component | `app/features/components/suivre-taux-service-cql-parent/detail-lignes-commande/template.hbs` | - |
+| `frontend:file:app/features/components/suivre-taux-service-cql-parent/taux-service-cql/component.js` | frontend | component | `app/features/components/suivre-taux-service-cql-parent/taux-service-cql/component.js` | - |
+| `frontend:file:app/features/components/suivre-taux-service-cql-parent/taux-service-cql/template.hbs` | frontend | component | `app/features/components/suivre-taux-service-cql-parent/taux-service-cql/template.hbs` | - |
+| `frontend:file:app/features/components/suivre-taux-service-cql-parent/template.hbs` | frontend | component | `app/features/components/suivre-taux-service-cql-parent/template.hbs` | - |
+| `frontend:file:app/features/decider-penalites/detail-ligne-penalite/template.hbs` | frontend | component | `app/features/decider-penalites/detail-ligne-penalite/template.hbs` | - |
+| `frontend:file:app/features/decider-penalites/ligne-penalite/template.hbs` | frontend | component | `app/features/decider-penalites/ligne-penalite/template.hbs` | - |
+| `frontend:file:app/features/decider-penalites/synthese/template.hbs` | frontend | component | `app/features/decider-penalites/synthese/template.hbs` | - |
+| `frontend:file:app/features/decider-penalites/template.hbs` | frontend | component | `app/features/decider-penalites/template.hbs` | - |
+| `frontend:file:app/features/exporter-taux-service-cql/template.hbs` | frontend | component | `app/features/exporter-taux-service-cql/template.hbs` | - |
+| `frontend:file:app/features/parametrer-penalites/template.hbs` | frontend | component | `app/features/parametrer-penalites/template.hbs` | - |
+| `frontend:file:app/features/suivre-taux-service-cql/detail-lignes-commande/template.hbs` | frontend | component | `app/features/suivre-taux-service-cql/detail-lignes-commande/template.hbs` | - |
+| `frontend:file:app/features/suivre-taux-service-cql/taux-service-cql/template.hbs` | frontend | component | `app/features/suivre-taux-service-cql/taux-service-cql/template.hbs` | - |
+| `frontend:file:app/features/suivre-taux-service-cql/template.hbs` | frontend | component | `app/features/suivre-taux-service-cql/template.hbs` | - |
+| `frontend:file:app/templates/application.hbs` | frontend | component | `app/templates/application.hbs` | - |
+| `infra:dockerfile:docker` | infrastructure | container | `docker/sonar.Dockerfile` | - |
+
+## Cross-Domain Dependencies
+
+_No cross-domain edges identified._
+
+## Dependency Graph (Mermaid)
+
+```mermaid
+flowchart TD
+    subgraph subgraph_frontend ["Frontend (UI)"]
+        n_76fca963f2762fe1b787df8cdb4ed001b0da7c37be3b88a005750965c4fd41d5["template (component)"]
+        n_0b40a4f20af3209fe17605c55751fe4b68f2e951829fed884c19326639d9afd8["component (component)"]
+        n_d3db080d72be407af2342348bf3791ec03d6703b7b61de173efe3497e164ddfd["component (component)"]
+        n_0df0d67761b11411260f8b7a34bf988358296f2a8b26a3b80645c4cc9aebcb75["template (component)"]
+        n_086027aa320daacffcbfda5fecbf8da46db02663d5b33bd502c10c39b057a8f1["component (component)"]
+        n_cc7314bcf26d426732b20393f8a5a8fd4058742b9853a2158540a254957a10de["template (component)"]
+        n_0596e5c265fc66ef66cfaf722ee5631bd794bc86123ee76440ffe6f918e273c7["component (component)"]
+        n_27fe3410831f33efbe74a3de172b79ca2d759eb9fe910881247ba19b8d3454c9["template (component)"]
+        n_2f5446e785b6ba8a07d4205b07da9d9fe623bce8304c79f65fa0eb99d264f903["component (component)"]
+        n_e7ff55feba44f453c5a8317c311fd9bb7204236cc37eea8a59d29abfdb150633["template (component)"]
+        n_6adac4ac8109b7f010e32cbcd34d851c7417262020394658ed085abbe9b7879f["component (component)"]
+        n_410fda561ba2b571a15c2095c28f22bae1aabbccd46e957e1d9cdfb3491d4a91["template (component)"]
+        n_2d8d9946e0161e9fc7ca058fbbb4182b8bdb2dc3da061c895db9931df08ca47c["template (component)"]
+        n_387ea5b0169beb047529089d0c41e00c9a3008fce7d4ce54ecf24e2f7e979b95["component (component)"]
+        n_75f7bfc70b2889c0c592f9e9482cc6639afe9f88940bc567eede1e1841054ec2["template (component)"]
+        n_71abef6d1bfb71b5245ee435a4bd7e8c598d2b75cad48d109c48d7bdecfa6301["component (component)"]
+        n_3b9dc2055927560e0ba98799d952c0de0a9a698118694136495e5cd9de66cae6["component (component)"]
+        n_e80ffb3378b78a938bfdd4ce3f52553155f069ad40558a1badd6b9bbddcee145["template (component)"]
+        n_2ebf9a2aa4ebc0f064ef2dc54ec9f2c7c59a2153b3d1cacd3d2e57110ac1d97d["component (component)"]
+        n_e30a8632748ebd782ff3171d860a6cc61263bc2f8e0cf57a79873add63547ea0["template (component)"]
+        n_ac074864948a1c437ae99ccca81d0934a52bfe72402567b7726fbba612659e24["template (component)"]
+        n_4cb67c81bbb0b3f1933a6b35af5cf1640692007c27fe0204206dc55a5e076ada["component (component)"]
+        n_da836b66d1a5a88e67cae0fb2ba3282bae3c4354b69dacc01a73ef5f6eb9500b["component (component)"]
+        n_9255e8cc713d3d691df12880a3ba07ece73e589d6bfdd45a64414c96bc16d1da["template (component)"]
+        n_569f80e736b7e72aeaa284be42c4f257af7edc59989ed3255bc8cbdf68fb28dd["component (component)"]
+        n_447d8bee8317414d4c20eda1e96e25174c5cbafa0d6fffd0b6aa2d2a422a40ed["template (component)"]
+        n_eae28d68095a381aba08efd29283a2948df3d0af2bd8601ab5e9e016075bc866["template (component)"]
+        n_66e8c789bec1fe27828af2249b6447229fdba59261a9ba4732af3ccd0e813adc["template (component)"]
+        n_242f0abb78a3588632687b01673e6df8c8eb0f76ea09ecddbc296c0a73639e35["template (component)"]
+        n_7a8f294539e517b5d1159ce3058725a78c6577d2fec0d560cf85e8bf953a443b["template (component)"]
+        n_da6f903735520170083d241f675e0465dffdf68bb7cd1df27c7481e746339a2c["template (component)"]
+        n_ae2d0780017b8fb5b632f58bbb2d0cd5bf1e1d8cbd368ca387af6dd988b873ba["template (component)"]
+        n_6d74655cda84bf0f0c84c76a72b50699003201c0c6d3aa8879d0e827659fd605["template (component)"]
+        n_e4c6e004b0cac866963e672336ecc4fea2cf68d8f318de6897d50ed0f3bf080d["template (component)"]
+        n_0fcea1b0c7d0f4cec9ebddffb41ed3a0da85f1dce1d426bf3ba0f784da0afa25["template (component)"]
+        n_62cb3701dd2f0eef03ce1b76ac25f96990c0613e58ff0062910eed2bbea1c206["template (component)"]
+        n_6d7b3059daeed707c16177a129714534d1fee60bc4d992c936648046fdc5110b["application (component)"]
+    end
+    subgraph subgraph_infrastructure ["Infrastructure & Deployment"]
+        n_42dd6d13f8d319a89fc07b7bd3640342adf433953d1daf5e3259f9e19336432a["sonar.Dockerfile (container)"]
+    end
+```
+

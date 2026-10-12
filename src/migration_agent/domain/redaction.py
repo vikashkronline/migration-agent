@@ -2,6 +2,7 @@
 
 import hashlib
 import re
+from pathlib import PurePath
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -39,6 +40,22 @@ class RedactionPolicy(BaseModel):
     def redact_text(self, text: str) -> str:
         """Replace inline tokens or secrets in text with [REDACTED]."""
         return _SECRET_PATTERN.sub("[REDACTED]", text)
+
+    def contains_secret(self, text: str) -> bool:
+        """Detect credential-shaped content without including it in diagnostics."""
+        return _SECRET_PATTERN.search(text) is not None
+
+    @staticmethod
+    def is_sensitive_path(path: PurePath) -> bool:
+        """Recognize credential files before opening them."""
+        name = path.name.casefold()
+        return (
+            name == ".env"
+            or name.startswith((".env.", "secrets."))
+            or name
+            in {".npmrc", ".pypirc", "credentials.json", "id_ed25519", "id_rsa", "secrets.json"}
+            or path.suffix.casefold() in {".key", ".p12", ".pem", ".pfx"}
+        )
 
     def redact_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Recursively redact secrets and bound oversized entries in audit payloads."""

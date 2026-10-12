@@ -1,0 +1,17 @@
+{
+  "roles": {
+    "admin": [
+      "*"
+    ],
+    "developer": [
+      "project.read",
+      "workflow.execute",
+      "changeset.stage",
+      "changeset.apply",
+      "learning.approve"
+    ],
+    "viewer": [
+      "project.read"
+    ]
+  }
+}

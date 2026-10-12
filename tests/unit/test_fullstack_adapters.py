@@ -60,8 +60,42 @@ def test_frontend_domain_adapter() -> None:
     assert len(nodes) == 1
     node = nodes[0]
     assert node.domain == MigrationDomain.FRONTEND
-    assert node.node_id == "frontend:users.component"
+    assert node.node_id == "frontend:file:src/app/users.component.ts"
     assert node.metadata.get("api_calls") == ["/api/users"]
+
+
+def test_frontend_preserves_repeated_basenames_and_extensions() -> None:
+    paths = [
+        "app/features/components/alpha/component.js",
+        "app/features/components/alpha/template.hbs",
+        "app/features/components/beta/component.js",
+        "app/features/components/beta/template.hbs",
+        "app/components/card.js",
+        "app/templates/components/card.hbs",
+        "packages/widget/src/card.component.ts",
+    ]
+    files = [
+        InspectedTextFile(
+            path=path,
+            category=FileCategory.SOURCE
+            if path.endswith((".js", ".ts"))
+            else FileCategory.TEMPLATE,
+            size_bytes=0,
+            sha256="a" * 64,
+            content="",
+        )
+        for path in paths
+    ]
+    adapter = FrontendDomainAdapter()
+    nodes = adapter.discover_nodes(_make_snapshot(files))
+    assert len(nodes) == len(paths)
+    assert {node.path for node in nodes} == set(paths)
+    assert len({node.node_id for node in nodes}) == len(paths)
+    assert nodes == adapter.discover_nodes(_make_snapshot(list(reversed(files))))
+    preserved = adapter.discover_nodes(_make_snapshot(files[:-1]))
+    assert {node.path: node.node_id for node in preserved} == {
+        node.path: node.node_id for node in nodes if node.path != paths[-1]
+    }
 
 
 def test_backend_api_adapter_fastapi() -> None:

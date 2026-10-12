@@ -123,7 +123,7 @@ def test_angular_standalone_renderer_from_angularjs_directive() -> None:
     assert "describe('UserBadgeComponent'" in spec_code
     assert "imports: [UserBadgeComponent]" in spec_code
     assert "component.toggleDetails();" in spec_code
-    assert "expect(component.isExpanded()).toBeTrue();" in spec_code
+    assert "expect(component.isExpanded()).toBe(true);" in spec_code
 
 
 def test_transformation_service_preview_angularjs_directive(tmp_path: Path) -> None:

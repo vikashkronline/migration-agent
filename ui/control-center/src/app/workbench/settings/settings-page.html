@@ -1,0 +1,659 @@
+<h1 id="content-heading" tabindex="-1" class="h3">Project settings</h1>
+<p class="text-body-secondary">
+  Inspect effective settings and prepare permitted changes. Saving settings does not start a
+  workflow.
+</p>
+@if (error()) {
+<div class="alert alert-danger" role="alert">{{error()}}</div>
+} @if (message()) {
+<div class="alert alert-info" role="status">{{message()}}</div>
+} @if (stale()) {
+<div class="alert alert-warning">
+  Active configuration changed. Your edits are retained. Cancel edits to load current values before
+  sending a new change.
+</div>
+} @if (disconnected()) {
+<div class="alert alert-warning">
+  Disconnected. Displayed values may be cached; changes are disabled.
+  <button class="btn btn-sm btn-outline-secondary" (click)="refresh()">Reconnect</button>
+</div>
+} @if (outcomeUnknown()) {
+<div class="alert alert-warning" role="status">
+  The request outcome is unknown. Recover the same request before making another change.
+  <button class="btn btn-sm btn-outline-primary" (click)="retryUnknown()">
+    Recover same request
+  </button>
+</div>
+} @if (projectErrors().length || localErrors().length) {
+<div class="alert alert-warning" role="alert">
+  <strong>Correct these fields before saving:</strong>
+  <ul class="mb-0">
+    @for (issue of projectErrors().concat(localErrors()); track issue) {
+    <li>{{issue}}</li>
+    }
+  </ul>
+</div>
+} @if (view(); as current) { @if (check(); as recordedCheck) { @if (recordedCheck.input_revision !==
+current.revision) {
+<div class="alert alert-warning">
+  These check results describe an older configuration revision. Run fresh checks before relying on
+  them.
+</div>
+} }
+<div class="row g-3">
+  <nav class="col-12 col-lg-3" aria-label="Settings sections">
+    <div class="list-group flex-row flex-wrap flex-lg-column">
+      @for (name of sections; track name) {
+      <a
+        class="list-group-item list-group-item-action text-capitalize"
+        [class.active]="section() === name"
+        [attr.aria-current]="section() === name ? 'page' : null"
+        [routerLink]="['/projects', projectId, 'settings', name]"
+        >{{name}}</a
+      >
+      }
+    </div>
+  </nav>
+  <div class="col-12 col-lg-9">
+    <div class="small text-body-secondary mb-3">
+      Principal: {{current.principal_id}} · {{current.is_owner ? 'Project owner' : 'Eligible project
+      member'}} · {{dirty() ? 'Unsaved edits' : 'Active values loaded'}}
+      <details>
+        <summary>Configuration context</summary>
+        <p class="text-break mb-0">
+          Revision: {{current.revision}}<br />Access: {{current.access_digest}}
+        </p>
+      </details>
+    </div>
+    @if (section() === 'overview') {
+    <section class="card mb-3">
+      <div class="card-body">
+        <h2 class="h5">Effective configuration</h2>
+        <dl class="row">
+          @for (field of current.effective.fields; track field.name) {
+          <dt class="col-sm-5 text-break">{{field.name.replaceAll('_', ' ')}}</dt>
+          <dd class="col-sm-7 text-break">
+            {{field.value ?? 'Not selected'}}
+            <small class="d-block text-body-secondary"
+              >{{field.origin}} · {{field.scope}} · {{field.update_mode.replaceAll('_', '
+              ')}}</small
+            >
+          </dd>
+          }
+        </dl>
+        <p class="small mb-0">
+          Shared constraints take precedence. A launcher override remains effective until a
+          deliberate restart.
+        </p>
+      </div>
+    </section>
+    <div class="d-flex gap-2 flex-wrap">
+      <a
+        class="btn btn-outline-primary"
+        [routerLink]="['/projects', projectId, 'wizard', 'foundation']"
+        >Target architecture and package mappings</a
+      ><a class="btn btn-outline-secondary" [routerLink]="['/projects', projectId, 'health']"
+        >Platform health</a
+      >
+    </div>
+    } @if (section() === 'models') {
+    <section class="card mb-3">
+      <div class="card-body">
+        <h2 class="h5">
+          My model selection <span class="badge text-bg-secondary">Only for me</span>
+        </h2>
+        <p>
+          Choose from owner-approved profiles. Credentials are managed outside this GUI and are
+          never displayed here.
+        </p>
+        @if (!canModels()) {
+        <p class="text-body-secondary">
+          Your role can inspect these values. Model selection needs local configuration and provider
+          permissions.
+        </p>
+        } @if (!current.project.profiles.length) {
+        <div class="alert alert-info">
+          Owner setup required: no runtime profile has been activated.
+        </div>
+        }
+        <label for="local-profile" class="form-label">Runtime profile</label>
+        <select
+          id="local-profile"
+          class="form-select mb-3"
+          [disabled]="!canModels() || !editable()"
+          [ngModel]="localDraft()?.profile_id ?? ''"
+          (ngModelChange)="changeLocal('profile_id', $event)"
+        >
+          <option value="">Use project default</option>
+          @for (profile of current.project.profiles; track profile.profile_id) {
+          <option [value]="profile.profile_id">
+            {{profile.profile_id}} · {{profile.provider}}
+          </option>
+          }
+        </select>
+        <label for="local-model" class="form-label">Model</label>
+        <select
+          id="local-model"
+          class="form-select mb-3"
+          [disabled]="!canModels() || !editable()"
+          [ngModel]="localDraft()?.model ?? ''"
+          (ngModelChange)="changeLocal('model', $event)"
+        >
+          <option value="">Use approved default</option>
+          @for (model of selectedProfile()?.models ?? []; track model) {
+          <option [value]="model">{{model}}</option>
+          }
+        </select>
+        <p class="small">
+          Effective provider: {{effective('provider')}}<br />Effective model: {{effective('model')}}
+        </p>
+        <button
+          class="btn btn-outline-secondary"
+          [disabled]="!has('provider.use') || !editable() || !selectedProfile()"
+          (click)="runCheck('provider')"
+        >
+          Test provider connection
+        </button>
+      </div>
+    </section>
+    @if (projectDraft(); as draft) {
+    <section class="card mb-3">
+      <div class="card-body">
+        <h2 class="h5">
+          Approved profiles <span class="badge text-bg-secondary">Shared project</span>
+        </h2>
+        <p>
+          Eligible members can propose changes. An owner reviews and signs the exact candidate
+          before it becomes active.
+        </p>
+        @for (profile of draft.profiles; track $index; let index = $index) {
+        <fieldset class="border rounded p-3 mb-3" [disabled]="!canPropose() || !editable()">
+          <legend class="h6 float-none w-auto px-1">Profile {{index + 1}}</legend>
+          <label [for]="'profile-id-' + index" class="form-label">Profile identifier</label
+          ><input
+            [id]="'profile-id-' + index"
+            class="form-control mb-2"
+            [ngModel]="profile.profile_id"
+            (ngModelChange)="changeProfile(index, 'profile_id', $event)"
+            maxlength="64"
+          />
+          <label [for]="'provider-' + index" class="form-label">Provider</label
+          ><select
+            [id]="'provider-' + index"
+            class="form-select mb-2"
+            [ngModel]="profile.provider"
+            (ngModelChange)="changeProfile(index, 'provider', $event)"
+          >
+            <option value="gemini">Gemini · approved Google endpoint</option>
+            <option value="openai">OpenAI · approved OpenAI endpoint</option>
+          </select>
+          <label [for]="'models-' + index" class="form-label"
+            >Allowed model identifiers, separated by commas</label
+          ><input
+            [id]="'models-' + index"
+            class="form-control mb-2"
+            [ngModel]="profile.models.join(', ')"
+            (ngModelChange)="changeProfile(index, 'models', $event)"
+          />
+          <label [for]="'default-model-' + index" class="form-label">Default model</label
+          ><select
+            [id]="'default-model-' + index"
+            class="form-select mb-2"
+            [ngModel]="profile.default_model"
+            (ngModelChange)="changeProfile(index, 'default_model', $event)"
+          >
+            <option value="">Choose an allowed model</option>
+            @for (model of profile.models; track model) {
+            <option [value]="model">{{model}}</option>
+            }
+          </select>
+          <h3 class="h6">Approved payload purposes</h3>
+          <p class="small">
+            Connectivity probes contain no source. Enable source analysis, planning, Q&amp;A or
+            browser evidence only after reviewing the disclosure to this provider.
+          </p>
+          @for (payload of ['connectivity', 'source_analysis', 'planning', 'contextual_qa',
+          'browser_review']; track payload) {<label class="form-check mb-1"
+            ><input
+              type="checkbox"
+              class="form-check-input"
+              [checked]="payloadIsAllowed(profile, payload)"
+              (change)="payloadAllowed(index, payload, $any($event.target).checked)"
+            /><span class="form-check-label">{{payload.replaceAll('_', ' ')}}</span></label
+          >}
+          <button class="btn btn-sm btn-outline-danger mt-2" (click)="removeProfile(index)">
+            Remove this draft profile
+          </button>
+        </fieldset>
+        }
+        <button
+          class="btn btn-sm btn-outline-primary mb-3"
+          [disabled]="!canPropose() || !editable()"
+          (click)="newProfile()"
+        >
+          Add runtime profile
+        </button>
+        <label for="default-profile" class="form-label d-block">Project default profile</label
+        ><select
+          id="default-profile"
+          class="form-select"
+          [disabled]="!canPropose() || !editable()"
+          [ngModel]="draft.default_profile ?? ''"
+          (ngModelChange)="changeProject('default_profile', $event)"
+        >
+          <option value="">No default</option>
+          @for (profile of draft.profiles; track $index) {
+          <option [value]="profile.profile_id">{{profile.profile_id}}</option>
+          }
+        </select>
+        <p class="small text-body-secondary mt-2">
+          Model identifiers are syntax checked locally. Availability is established only by an
+          explicitly authorized provider probe.
+        </p>
+      </div>
+    </section>
+    } } @if (section() === 'directories') {
+    <section class="card mb-3">
+      <div class="card-body">
+        <h2 class="h5">Current binding</h2>
+        <dl class="row">
+          <dt class="col-sm-4">Source repository — read-only</dt>
+          <dd class="col-sm-8 text-break">{{current.bindings['source_root']}}</dd>
+          <dt class="col-sm-4">Governance repository</dt>
+          <dd class="col-sm-8 text-break">{{current.bindings['governance_root']}}</dd>
+          <dt class="col-sm-4">Staging</dt>
+          <dd class="col-sm-8 text-break">{{current.bindings['staging_root']}}</dd>
+          <dt class="col-sm-4">Operational state</dt>
+          <dd class="col-sm-8 text-break">{{current.bindings['state_dir']}}</dd>
+          <dt class="col-sm-4">External trust</dt>
+          <dd class="col-sm-8 text-break">{{current.bindings['trust_root']}}</dd>
+        </dl>
+        <p>
+          Existing bindings cannot be hot-edited. Restart handoffs preserve old state and artifacts.
+        </p>
+        <details>
+          <summary>Arguments for next launch</summary>
+          <pre class="small text-wrap">{{current.restart_arguments | json}}</pre>
+        </details>
+      </div>
+    </section>
+    } @if (section() === 'environment') {
+    <section class="card mb-3">
+      <div class="card-body">
+        <h2 class="h5">Execution environment</h2>
+        <p>
+          Native supervision is not a filesystem or network sandbox. Saving a profile does not grant
+          execution consent.
+        </p>
+        <label for="execution-mode" class="form-label">My execution mode</label
+        ><select
+          id="execution-mode"
+          class="form-select mb-3"
+          [disabled]="!canEnvironment() || !editable()"
+          [ngModel]="localDraft()?.validation_mode ?? ''"
+          (ngModelChange)="changeLocal('validation_mode', $event)"
+        >
+          <option value="">Use launcher/platform selection</option>
+          @for (mode of current.project.allowed_validation_modes; track mode) {
+          <option [value]="mode">{{mode}}</option>
+          }
+        </select>
+        @if (projectDraft(); as draft) {
+        <fieldset [disabled]="!canPropose() || !editable()">
+          <legend class="h6">Allowed modes — shared proposal</legend>
+          @for (mode of ['restricted', 'native', 'container']; track mode) {<label
+            class="form-check"
+            ><input
+              class="form-check-input"
+              type="checkbox"
+              [checked]="modeIsAllowed(mode)"
+              (change)="modeAllowed(mode, $any($event.target).checked)"
+            /><span class="form-check-label">{{mode}}</span></label
+          >}
+        </fieldset>
+        }
+        <button
+          class="btn btn-outline-secondary mt-3"
+          [disabled]="!canEnvironment() || !editable()"
+          (click)="runCheck('toolchain')"
+        >
+          Check installed toolchain
+        </button>
+      </div>
+    </section>
+    } @if (section() === 'validation') {
+    <section class="card mb-3">
+      <div class="card-body">
+        <h2 class="h5">Validation and browser review</h2>
+        <p>
+          Required compile, build, test and browser gates are controlled by the workflow and signed
+          policy. Configuration checks do not replace real validation evidence.
+        </p>
+        <label class="form-check"
+          ><input
+            type="checkbox"
+            class="form-check-input"
+            [disabled]="!canPropose() || !editable()"
+            [ngModel]="projectDraft()?.browser_provider_export"
+            (ngModelChange)="changeProject('browser_provider_export', $event)"
+          /><span class="form-check-label"
+            >Propose browser evidence export to an approved provider</span
+          ></label
+        >
+        <p class="small mt-2">
+          Requires owner approval, an approved destination and fresh applicable execution consent.
+        </p>
+      </div>
+    </section>
+    } @if (section() === 'workflow') { @if (projectDraft(); as draft) {
+    <section class="card mb-3">
+      <div class="card-body">
+        <h2 class="h5">Workflow limits</h2>
+        <label for="project-turns" class="form-label">Shared maximum turn budget</label
+        ><input
+          id="project-turns"
+          type="number"
+          min="1"
+          max="30"
+          class="form-control mb-3"
+          [disabled]="!canPropose() || !editable()"
+          [ngModel]="draft.max_turns"
+          (ngModelChange)="changeProject('max_turns', $event)"
+        />
+        <label for="project-files" class="form-label">Maximum files per task</label
+        ><input
+          id="project-files"
+          type="number"
+          min="1"
+          max="100"
+          class="form-control mb-3"
+          [disabled]="!canPropose() || !editable()"
+          [ngModel]="draft.max_step_files"
+          (ngModelChange)="changeProject('max_step_files', $event)"
+        />
+        <label for="my-turns" class="form-label">My turn budget — within the shared limit</label
+        ><input
+          id="my-turns"
+          type="number"
+          min="1"
+          [max]="current.project.max_turns"
+          class="form-control mb-3"
+          [disabled]="!canLocal() || !editable()"
+          [ngModel]="localDraft()?.max_turns"
+          (ngModelChange)="changeLocal('max_turns', $event)"
+        />
+        <p class="small">
+          Saving defaults leaves execution, progress, artifacts and approvals in Workflows/Tasks.
+          Fixed supervision and consent limits cannot be changed here.
+        </p>
+      </div>
+    </section>
+    } } @for (field of localFields(); track field.name) { @if (field.kind === 'path' || field.name
+    === 'validation_image') {
+    <div class="mb-3">
+      <label [for]="field.name" class="form-label"
+        >{{field.label}} <small class="text-body-secondary">This workstation</small></label
+      ><input
+        [id]="field.name"
+        class="form-control"
+        [disabled]="!canEnvironment() || !editable()"
+        [ngModel]="localValue(field.name)"
+        (ngModelChange)="updateLocalField(field.name, $event)"
+        maxlength="1024"
+      />
+      <p class="small text-body-secondary mt-1">
+        {{field.help}}<br />Effective: {{effective(field.name)}}
+      </p>
+    </div>
+    } } @if (section() === 'directories' && canApprove()) {
+    <details class="card mb-3">
+      <summary class="card-header">Prepare a separate project for a new source</summary>
+      <div class="card-body">
+        <p>
+          This prepares terminal arguments. It does not open an unbound repository, move history or
+          change the current source.
+        </p>
+        <label for="new-source" class="form-label">New source — read-only</label
+        ><input
+          id="new-source"
+          class="form-control mb-2"
+          [ngModel]="setupDraft().source_root"
+          (ngModelChange)="changeSetup('source_root', $event)"
+        />
+        <label for="new-governance" class="form-label">New governance repository</label
+        ><input
+          id="new-governance"
+          class="form-control mb-2"
+          [ngModel]="setupDraft().governance_root"
+          (ngModelChange)="changeSetup('governance_root', $event)"
+        />
+        <label for="new-state" class="form-label">New state directory</label
+        ><input
+          id="new-state"
+          class="form-control mb-2"
+          [ngModel]="setupDraft().state_dir"
+          (ngModelChange)="changeSetup('state_dir', $event)"
+        />
+        <label for="new-staging" class="form-label">New staging directory</label
+        ><input
+          id="new-staging"
+          class="form-control mb-2"
+          [ngModel]="setupDraft().staging_root"
+          (ngModelChange)="changeSetup('staging_root', $event)"
+        />
+        <label for="new-name" class="form-label">Project identifier</label
+        ><input
+          id="new-name"
+          class="form-control mb-3"
+          [ngModel]="setupDraft().project_name"
+          (ngModelChange)="changeSetup('project_name', $event)"
+        />
+        <button class="btn btn-outline-primary" [disabled]="!editable()" (click)="prepareSetup()">
+          Prepare initialization handoff
+        </button>
+        @if (setupPlan(); as plan) {
+        <p class="mt-3">{{plan.message}}</p>
+        <pre class="small text-wrap">{{plan.command_arguments | json}}</pre>
+        <button class="btn btn-sm btn-outline-secondary" (click)="copy(plan.command_arguments)">
+          Copy PowerShell command</button
+        >}
+      </div>
+    </details>
+    } @if (section() === 'governance') {
+    <section class="card mb-3">
+      <div class="card-body">
+        <h2 class="h5">Governance and architecture</h2>
+        <p>
+          Shared settings use the current owner-signed rules revision. Trust anchors, memberships
+          and security authority are managed through their existing lifecycle.
+        </p>
+        <div class="d-flex gap-2 flex-wrap">
+          <a class="btn btn-outline-primary" [routerLink]="['/projects', projectId, 'access']"
+            >Users and access</a
+          ><a
+            class="btn btn-outline-secondary"
+            [routerLink]="['/projects', projectId, 'wizard', 'foundation']"
+            >Target architecture and mappings</a
+          >
+        </div>
+        <label for="target-preset" class="form-label mt-3"
+          >Target preset reference — shared proposal</label
+        ><input
+          id="target-preset"
+          class="form-control"
+          [disabled]="!canPropose() || !editable()"
+          [ngModel]="projectDraft()?.target_preset_id ?? ''"
+          (ngModelChange)="changeProject('target_preset_id', $event)"
+        />
+        <p class="small mt-2">
+          Accepted architecture takes precedence. A preset reference does not rewrite ADRs or
+          generate application files.
+        </p>
+      </div>
+    </section>
+    } @if (section() === 'history') {
+    <section class="card mb-3">
+      <div class="card-body">
+        <h2 class="h5">Configuration proposals</h2>
+        <button class="btn btn-sm btn-outline-secondary mb-3" (click)="loadHistory()">
+          Refresh history
+        </button>
+        <ul class="list-unstyled">
+          @for (proposal of history(); track proposal.proposal_id) {
+          <li class="border-bottom py-2">
+            <p class="small text-break">
+              {{proposal.created_at}} · {{proposal.principal_id}}<br />{{proposal.proposal_id}} ·
+              {{historyStatus(proposal.proposal_id)}}
+            </p>
+            <button
+              class="btn btn-sm btn-outline-primary me-2"
+              (click)="openReview(proposal.proposal_id, false)"
+            >
+              Inspect proposal</button
+            ><button
+              class="btn btn-sm btn-outline-secondary"
+              [disabled]="!canPropose() || !editable()"
+              (click)="restoreDraft(proposal)"
+            >
+              Restore into new draft
+            </button>
+          </li>
+          } @empty {
+          <li>No configuration proposals recorded.</li>
+          }
+        </ul>
+      </div>
+    </section>
+    } @if (diagnostics().length) {
+    <section class="card mb-3" aria-label="Configuration checks">
+      <div class="card-body">
+        <h2 class="h5">Checks and prerequisites</h2>
+        <ul class="mb-0">
+          @for (diagnostic of diagnostics(); track $index) {
+          <li class="mb-2">
+            <strong>{{diagnostic.severity}} · {{diagnostic.field.replaceAll('_', ' ')}}</strong>:
+            {{diagnostic.message}} @if (diagnostic.action) {<small
+              class="d-block text-body-secondary"
+              >{{diagnostic.action}}</small
+            >}
+          </li>
+          }
+        </ul>
+      </div>
+    </section>
+    } @if (check(); as checked) {
+    <p role="status">Check: {{checked.status}} · {{checked.operation_id}}</p>
+    <div class="d-flex gap-2 mb-3">
+      <button class="btn btn-sm btn-outline-secondary" (click)="checkAction('recover')">
+        Recover this check</button
+      ><button
+        class="btn btn-sm btn-outline-danger"
+        [disabled]="!['QUEUED','RUNNING','CANCEL_REQUESTED'].includes(checked.status)"
+        (click)="checkAction('cancel')"
+      >
+        Cancel check
+      </button>
+    </div>
+    }
+    <div class="d-flex gap-2 flex-wrap border-top pt-3 mb-3">
+      <button
+        class="btn btn-outline-secondary"
+        [disabled]="pending() || stale() || disconnected() || outcomeUnknown()"
+        (click)="runCheck('offline')"
+      >
+        Check my configuration
+      </button>
+      <button
+        class="btn btn-primary"
+        [disabled]="!canLocal() || !editable() || !localDirty() || localErrors().length > 0"
+        (click)="saveLocal()"
+      >
+        Save my selection
+      </button>
+      <button
+        class="btn btn-outline-primary"
+        [disabled]="!canPropose() || !editable() || !projectDirty() || projectErrors().length > 0"
+        (click)="propose()"
+      >
+        Save shared proposal
+      </button>
+      <button
+        class="btn btn-outline-secondary"
+        [disabled]="pending() || outcomeUnknown()"
+        (click)="cancelEdits()"
+      >
+        Cancel edits / refresh
+      </button>
+    </div>
+    @if (review(); as proposed) {
+    <section class="card mb-3">
+      <div class="card-body">
+        <h2 class="h5">Exact shared proposal</h2>
+        <p class="text-break small">{{proposed.proposal.proposal_id}}</p>
+        <div class="row g-3">
+          <div class="col-12 col-xl-6">
+            <h3 class="h6">Active project settings</h3>
+            <pre class="small text-wrap">{{proposed.active | json}}</pre>
+          </div>
+          <div class="col-12 col-xl-6">
+            <h3 class="h6">Proposed project settings</h3>
+            <pre class="small text-wrap">{{proposed.proposal.configuration | json}}</pre>
+          </div>
+        </div>
+        <ul>
+          @for (impact of proposed.impact; track impact) {
+          <li>{{impact}}</li>
+          }
+        </ul>
+        @if (canApprove()) {<button
+          class="btn btn-outline-primary"
+          [disabled]="disconnected() || pending()"
+          (click)="openReview(proposed.proposal.proposal_id, true)"
+        >
+          Prepare owner approval handoff</button
+        >} @else {
+        <p>An eligible owner must review and sign this proposal.</p>
+        } @if (proposed.signing_digest) {
+        <p class="small text-break mt-3">Exact approval digest: {{proposed.signing_digest}}</p>
+        <p>
+          Review and sign in your trusted terminal. This browser cannot sign or activate an unsigned
+          change.
+        </p>
+        <pre class="small text-wrap">{{proposed.review_command | json}}</pre>
+        <button class="btn btn-sm btn-outline-secondary" (click)="copy(proposed.review_command)">
+          Copy terminal command</button
+        >}
+      </div>
+    </section>
+    }
+  </div>
+</div>
+} @else {
+<p role="status">Loading authorized settings…</p>
+<button class="btn btn-outline-secondary" (click)="refresh(true)">Retry</button>}
+<cc-modal-dialog
+  label="Confirm configuration probe"
+  [open]="confirmation() !== null"
+  (dismissed)="confirmation.set(null)"
+>
+  @if (confirmation() === 'provider') {
+  <p>
+    Send a fixed connectivity request to the selected approved provider. No source, diff, image or
+    repository content is sent. This may use the provider account.
+  </p>
+  } @else {
+  <p>
+    Run only the installed external Node executable with its fixed version arguments, under process
+    supervision. No repository scripts are executed.
+  </p>
+  } <button class="btn btn-primary me-2" (click)="confirmProbe()">Run this bounded probe</button
+  ><button class="btn btn-outline-secondary" (click)="confirmation.set(null)">Cancel</button>
+</cc-modal-dialog>
+<cc-modal-dialog label="Leave settings?" [open]="leavePrompt()" (dismissed)="finishLeave(false)">
+  <p>
+    Unsaved edits will be lost. If an action's outcome is unknown, return to Settings and recover
+    its recorded request before starting another.
+  </p>
+  <button class="btn btn-primary me-2" (click)="finishLeave(false)">Keep editing</button>
+  <button class="btn btn-outline-secondary" (click)="finishLeave(true)">Leave settings</button>
+</cc-modal-dialog>

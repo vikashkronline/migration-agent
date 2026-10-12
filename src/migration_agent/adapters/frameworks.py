@@ -128,16 +128,28 @@ class EmberClassicAdapter:
             (
                 file
                 for file in snapshot.files
-                if "/app/components/" in f"/{file.path}" and file.path.endswith(".js")
+                if (
+                    "/app/components/" in f"/{file.path}"
+                    or "/app/features/components/" in f"/{file.path}"
+                    or "/app/pods/components/" in f"/{file.path}"
+                )
+                and file.path.endswith(".js")
             ),
             None,
         )
         if component is not None:
+            is_pod = "/features/" in f"/{component.path}" or "/pods/" in f"/{component.path}"
+            layout_kind = "pod_component_layout" if is_pod else "classic_component_layout"
+            layout_desc = (
+                "Uses the Ember pod/feature component layout."
+                if is_pod
+                else "Uses the classic app/components JavaScript layout."
+            )
             evidence.append(
                 FrameworkEvidence(
                     path=component.path,
-                    kind="classic_component_layout",
-                    description="Uses the classic app/components JavaScript layout.",
+                    kind=layout_kind,
+                    description=layout_desc,
                     weight=0.1,
                 )
             )
@@ -146,16 +158,33 @@ class EmberClassicAdapter:
             (
                 file
                 for file in snapshot.files
-                if "/app/templates/components/" in f"/{file.path}" and file.path.endswith(".hbs")
+                if (
+                    "/app/templates/components/" in f"/{file.path}"
+                    or (
+                        (
+                            "/app/features/components/" in f"/{file.path}"
+                            or "/app/pods/components/" in f"/{file.path}"
+                        )
+                        and file.path.endswith(".hbs")
+                    )
+                )
+                and file.path.endswith(".hbs")
             ),
             None,
         )
         if template is not None:
+            is_pod = "/features/" in f"/{template.path}" or "/pods/" in f"/{template.path}"
+            layout_kind = "pod_template_layout" if is_pod else "classic_template_layout"
+            layout_desc = (
+                "Uses the Ember pod/feature template layout."
+                if is_pod
+                else "Uses the classic app/templates/components layout."
+            )
             evidence.append(
                 FrameworkEvidence(
                     path=template.path,
-                    kind="classic_template_layout",
-                    description="Uses the classic app/templates/components layout.",
+                    kind=layout_kind,
+                    description=layout_desc,
                     weight=0.1,
                 )
             )

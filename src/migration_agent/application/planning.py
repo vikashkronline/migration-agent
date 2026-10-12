@@ -19,6 +19,7 @@ from migration_agent.domain import (
     ProjectInventory,
     compute_plan_digest,
 )
+from migration_agent.domain.knowledge import DecisionStatus
 from migration_agent.ports import (
     AgentRuntimePort,
     AuditEvent,
@@ -30,6 +31,7 @@ from migration_agent.ports import (
     SignatureVerifierPort,
     SpecialistRuntimePort,
 )
+from migration_agent.ports.knowledge import KnowledgePort
 
 
 class PlanningService:
@@ -43,6 +45,7 @@ class PlanningService:
         governance: GovernancePort,
         validator: RuleBasedPlanValidator | None = None,
         specialist_runtime: SpecialistRuntimePort | None = None,
+        knowledge: KnowledgePort | None = None,
     ) -> None:
         self.runtime = runtime
         self.checkpoint_store = checkpoint_store
@@ -50,6 +53,7 @@ class PlanningService:
         self.governance = governance
         self.validator = validator or RuleBasedPlanValidator()
         self.specialist_runtime = specialist_runtime
+        self.knowledge = knowledge
 
     def create_plan(
         self,
@@ -66,12 +70,27 @@ class PlanningService:
         """Generate, validate, and persist a new migration plan."""
         self.governance.ensure_governance_layout(project_root)
         policy_digest = self.governance.get_policy_digest(project_root)
+        decisions = tuple(
+            sorted(
+                (
+                    decision
+                    for decision in (
+                        self.knowledge.list_decisions(project_root) if self.knowledge else []
+                    )
+                    if decision.status == DecisionStatus.ACCEPTED
+                ),
+                key=lambda decision: decision.decision_id,
+            )
+        )
+        if sum(len(d.model_dump_json().encode("utf-8")) for d in decisions) > 65_536:
+            raise ValueError("ARCHITECTURE_CONTEXT_TOO_LARGE: accepted ADRs exceed 64 KiB.")
 
         # Generate candidate steps from agent runtime
         raw_steps = self.runtime.plan(
             PlanningRequest(
                 inventory=inventory,
                 analysis=analysis,
+                accepted_decisions=decisions,
                 provider=provider,
                 model=model,
                 max_turns=max_turns,
@@ -90,7 +109,7 @@ class PlanningService:
 
         preliminary_plan = MigrationPlan(
             plan_id=plan_id,
-            source_root=project_root,
+            source_root=str(inventory.repository.root.resolve()),
             run_id=active_run_id,
             status=PlanStatus.DRAFT,
             steps=sorted_steps,
@@ -153,6 +172,7 @@ class PlanningService:
                     "is_valid": validation.is_valid,
                     "errors": validation.errors,
                     "warnings": validation.warnings,
+                    "accepted_decision_ids": [d.decision_id for d in decisions],
                 },
             )
         )
